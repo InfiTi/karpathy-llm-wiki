@@ -1,0 +1,21 @@
+# Build artifacts
+dist/
+build/
+*.spec.bak
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Python
+venv/
+env/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.log
+*.bak
