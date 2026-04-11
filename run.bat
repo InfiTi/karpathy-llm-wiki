@@ -1,23 +1,21 @@
 @echo off
-chcp 65001 >nul
-title KWiki - 直接运行（源码模式）
+title KWiki - run
 
 cd /d "%~dp0"
 
 echo.
-echo [KWiki] 启动中 ...
-echo.
-echo 如遇错误，请确认 conda 环境已激活：
-echo   conda activate YOUR_ENV
+echo [KWiki] Starting ...
 echo.
 
+REM Try running with python directly first
 python kwiki.py
+if not errorlevel 1 goto :end
 
-if errorlevel 1 (
-    echo.
-    echo [错误] 启动失败！
-    echo.
-    echo 可尝试指定 Python：
-    echo   E:\AIGC\ComfyUI\ComfyUI-aki-v1.7\python_embeded\python.exe kwiki.py
-)
+REM Fallback: try conda python
+echo.
+echo [Hint] Try with embedded Python:
+echo   python.exe kwiki.py
+echo.
+
+:end
 pause
