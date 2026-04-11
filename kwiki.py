@@ -1,10 +1,9 @@
-"""
-KWiki - Karpathy LLM Wiki 入库工具 v0.2
-三层架构：Ingest / Query / Lint
+"""KWiki - Karpathy LLM Wiki 入库工具 v0.2.1
+三层架构：Ingest / Query / Lint，提示词可配置
 """
 import sys, os, tkinter as tk
-from tkinter import ttk, messagebox, filedialog, scrolledtext
-import threading
+from tkinter import ttk, messagebox, filedialog
+import threading, datetime
 
 import config
 import fetchers
@@ -17,8 +16,8 @@ from lint import run_lint
 class KWikiApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("KWiki v0.2 - Karpathy LLM Wiki")
-        self.root.geometry("800x700")
+        self.root.title("KWiki v0.2.1 - Karpathy LLM Wiki")
+        self.root.geometry("900x750")
         self.root.configure(bg="#f0f2f5")
 
         self.cfg = config.Config()
@@ -26,144 +25,126 @@ class KWikiApp:
         self._build_ui()
 
     # ------------------------------------------------------------------ #
-    # UI 构建
+    # UI
     # ------------------------------------------------------------------ #
     def _build_ui(self):
         s = ttk.Style()
         s.theme_use("clam")
-        base = {"background": "#f0f2f5"}
-        card = {"background": "#ffffff", "relief": "solid", "borderwidth": 1}
 
-        for style in ["BG.TFrame", "Card.TFrame"]:
-            s.configure(style, background="#f0f2f5" if style == "BG.TFrame" else "#ffffff")
-        for style in ["TLabel", "Title.TLabel"]:
-            s.configure(style, background="#f0f2f5", foreground="#333",
-                         font=("Microsoft YaHei", 10 if style == "TLabel" else 16, "bold"))
-        s.configure("Card.TLabel", background="#ffffff", foreground="#333")
-        s.configure("Bold.TLabel", background="#ffffff", foreground="#222",
-                     font=("Microsoft YaHei", 10, "bold"))
-        s.configure("Accent.TButton", font=("Microsoft YaHei", 10, "bold"))
-        s.configure("Log.TText", background="#1e1e1e", foreground="#cccccc",
-                     font=("Consolas", 9))
-
-        main = ttk.Frame(self.root, style="BG.TFrame", padding=15)
+        main = ttk.Frame(self.root, padding=15)
         main.pack(fill="both", expand=True)
 
-        # 标题
-        ttk.Label(main, text="KWiki v0.2  |  Karpathy LLM Wiki", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(main, text="Ingest  ·  Query  ·  Lint", foreground="#888",
-                  font=("Microsoft YaHei", 9)).pack(anchor="w", pady=(0, 10))
+        ttk.Label(main, text="KWiki v0.2.1", font=("Microsoft YaHei", 16, "bold")).pack(anchor="w")
+        ttk.Label(main, text="Ingest  ·  Query  ·  Lint  ·  提示词可配置",
+                  foreground="#888", font=("Microsoft YaHei", 9)).pack(anchor="w", pady=(0, 10))
 
-        # 操作区（Notebook）
         nb = ttk.Notebook(main)
         nb.pack(fill="both", expand=True, pady=(0, 10))
         nb.add(self._build_ingest_tab(), text="  Ingest 摄入 ")
         nb.add(self._build_query_tab(), text="  Query 查询 ")
         nb.add(self._build_lint_tab(), text="  Lint 检查 ")
+        nb.add(self._build_prompts_tab(), text="  提示词配置 ")
 
-        # 底部设置栏
         self._build_footer(main)
 
     def _build_ingest_tab(self):
-        frame = ttk.Frame(self.root, style="Card.TFrame", padding=15)
-        card = ttk.Frame(frame, style="Card.TFrame", padding=15)
+        frame = ttk.Frame(self.root)
+        card = ttk.Frame(frame, padding=15)
         card.pack(fill="both", expand=True)
-
-        ttk.Label(card, text="知识摄入（Ingest）", style="Bold.TLabel").pack(anchor="w", pady=(0, 8))
-        ttk.Label(card, text="输入链接或选择文件，AI 自动提炼并存入 wiki/",
+        ttk.Label(card, text="知识摄入（Ingest）", font=("Microsoft YaHei", 12, "bold")).pack(anchor="w")
+        ttk.Label(card, text="输入链接或选择文件 → raw/ 保存原始内容 → wiki/ 写入结构化笔记",
                   foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w", pady=(0, 10))
-
         self.ingest_var = tk.StringVar()
-        ttk.Entry(card, textvariable=self.ingest_var,
-                  font=("Microsoft YaHei", 11)).pack(fill="x", pady=(0, 8))
-        ttk.Label(card, text="支持：网页 / B站/YouTube视频 / PDF / Word",
+        ttk.Entry(card, textvariable=self.ingest_var, font=("Microsoft YaHei", 11)).pack(fill="x", pady=(0, 8))
+        ttk.Label(card, text="支持：网页 / B站 · YouTube 视频 / PDF / Word",
                   foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w")
-
         row = ttk.Frame(card)
         row.pack(fill="x", pady=10)
         ttk.Button(row, text="选择文件", command=self._pick_file).pack(side="left", padx=(0, 8))
-        ttk.Button(row, text="开始摄入", style="Accent.TButton",
-                   command=self._do_ingest).pack(side="left")
-
-        # 进度
-        self.ingest_progress = ttk.Label(card, text="", foreground="#888",
-                                         font=("Microsoft YaHei", 9))
+        ttk.Button(row, text="开始摄入", style="Accent.TButton", command=self._do_ingest).pack(side="left")
+        self.ingest_progress = ttk.Label(card, text="", foreground="#888", font=("Microsoft YaHei", 9))
         self.ingest_progress.pack(anchor="w", pady=(5, 0))
-
-        # 日志
         self.ingest_log = self._make_log(card)
         return frame
 
     def _build_query_tab(self):
-        frame = ttk.Frame(self.root, style="Card.TFrame", padding=15)
-        card = ttk.Frame(frame, style="Card.TFrame", padding=15)
+        frame = ttk.Frame(self.root)
+        card = ttk.Frame(frame, padding=15)
         card.pack(fill="both", expand=True)
-
-        ttk.Label(card, text="知识查询（Query）", style="Bold.TLabel").pack(anchor="w", pady=(0, 8))
-        ttk.Label(card, text="向知识库提问，AI 综合已有知识回答",
+        ttk.Label(card, text="知识查询（Query）", font=("Microsoft YaHei", 12, "bold")).pack(anchor="w")
+        ttk.Label(card, text="向 wiki/ 提问，AI 综合已有知识回答，评估缺口并可回填",
                   foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w", pady=(0, 10))
-
         self.query_var = tk.StringVar()
-        ttk.Entry(card, textvariable=self.query_var, font=("Microsoft YaHei", 11)
-                  ).pack(fill="x", pady=(0, 8))
+        ttk.Entry(card, textvariable=self.query_var, font=("Microsoft YaHei", 11)).pack(fill="x", pady=(0, 8))
         ttk.Label(card, text="按回车开始查询",
                   foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w")
-
         row = ttk.Frame(card)
         row.pack(fill="x", pady=10)
-        ttk.Button(row, text="开始查询", style="Accent.TButton",
-                   command=self._do_query).pack(side="left")
-
-        # 结果展示
+        ttk.Button(row, text="开始查询", style="Accent.TButton", command=self._do_query).pack(side="left")
         self.query_result = self._make_log(card)
         return frame
 
     def _build_lint_tab(self):
-        frame = ttk.Frame(self.root, style="Card.TFrame", padding=15)
-        card = ttk.Frame(frame, style="Card.TFrame", padding=15)
+        frame = ttk.Frame(self.root)
+        card = ttk.Frame(frame, padding=15)
         card.pack(fill="both", expand=True)
-
-        ttk.Label(card, text="质量检查（Lint）", style="Bold.TLabel").pack(anchor="w", pady=(0, 8))
-        ttk.Label(card, text="扫描 wiki/ 目录，发现矛盾、过时信息和质量改进点",
+        ttk.Label(card, text="质量检查（Lint）", font=("Microsoft YaHei", 12, "bold")).pack(anchor="w")
+        ttk.Label(card, text="扫描 wiki/，发现矛盾、过时信息、缺失链接，给出质量评分",
                   foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w", pady=(0, 10))
-
         row = ttk.Frame(card)
         row.pack(fill="x", pady=10)
-        ttk.Button(row, text="开始扫描", style="Accent.TButton",
-                   command=self._do_lint).pack(side="left")
-
+        ttk.Button(row, text="开始扫描", style="Accent.TButton", command=self._do_lint).pack(side="left")
         self.lint_result = self._make_log(card)
+        return frame
+
+    def _build_prompts_tab(self):
+        frame = ttk.Frame(self.root)
+        card = ttk.Frame(frame, padding=15)
+        card.pack(fill="both", expand=True)
+        ttk.Label(card, text="提示词配置", font=("Microsoft YaHei", 12, "bold")).pack(anchor="w")
+        ttk.Label(card, text="直接编辑提示词模板，保存后立即生效（提示词保存在 config.json）",
+                  foreground="#999", font=("Microsoft YaHei", 8)).pack(anchor="w", pady=(0, 8))
+
+        names = [
+            ("prompt_ingest_system", "Ingest 系统提示词"),
+            ("prompt_ingest_user",   "Ingest 用户提示词模板"),
+            ("prompt_query_system",   "Query 系统提示词"),
+            ("prompt_query_user",     "Query 用户提示词模板"),
+            ("prompt_lint_system",    "Lint 系统提示词"),
+            ("prompt_lint_user",      "Lint 用户提示词模板"),
+        ]
+        self._prompt_entries = {}
+        for key, label in names:
+            ttk.Label(card, text=label, font=("Microsoft YaHei", 9, "bold")).pack(anchor="w", pady=(8, 2))
+            txt = tk.Text(card, font=("Consolas", 8), height=5, wrap="word")
+            txt.insert("1.0", self.cfg.get_prompt(key) or "")
+            txt.pack(fill="x", pady=(0, 4))
+            self._prompt_entries[key] = txt
+
+        ttk.Button(card, text="保存提示词", style="Accent.TButton",
+                   command=self._save_prompts).pack(anchor="e", pady=(5, 0))
         return frame
 
     def _make_log(self, parent):
         txt = tk.Text(parent, font=("Consolas", 9),
                       bg="#1e1e1e", fg="#cccccc", relief="flat",
-                      state="disabled", wrap="word", height=10)
+                      state="disabled", wrap="word")
         txt.pack(fill="both", expand=True, pady=(8, 0))
-        scroll = ttk.Scrollbar(parent, command=txt.yview)
-        scroll.pack(side="right", fill="y")
-        txt.config(yscrollcommand=scroll.set)
         return txt
 
     def _build_footer(self, parent):
-        footer = ttk.Frame(parent, style="Card.TFrame", padding=10)
+        footer = ttk.Frame(parent, padding=10)
         footer.pack(fill="x")
-
-        ttk.Label(footer, text="Vault:", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        ttk.Label(footer, text="Vault:").pack(side="left", padx=(0, 5))
         self.vault_var = tk.StringVar(value=self.cfg.get("vault_path"))
-        ttk.Entry(footer, textvariable=self.vault_var,
-                  font=("Microsoft YaHei", 9), width=38).pack(side="left", padx=(0, 8))
-        ttk.Button(footer, text="浏览", command=self._browse_vault,
-                   width=6).pack(side="left", padx=(0, 8))
-
-        ttk.Label(footer, text="LLM:", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        ttk.Entry(footer, textvariable=self.vault_var, font=("Microsoft YaHei", 9), width=40).pack(side="left", padx=(0, 8))
+        ttk.Button(footer, text="浏览", command=self._browse_vault, width=6).pack(side="left", padx=(0, 8))
+        ttk.Label(footer, text="LLM:").pack(side="left", padx=(0, 5))
         self.llm_url_var = tk.StringVar(value=self.cfg.get("llm_url"))
-        ttk.Entry(footer, textvariable=self.llm_url_var,
-                  font=("Microsoft YaHei", 9), width=22).pack(side="left", padx=(0, 5))
-        ttk.Label(footer, text="Model:", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        ttk.Entry(footer, textvariable=self.llm_url_var, font=("Microsoft YaHei", 9), width=24).pack(side="left", padx=(0, 5))
+        ttk.Label(footer, text="Model:").pack(side="left", padx=(0, 5))
         self.model_var = tk.StringVar(value=self.cfg.get("model"))
-        ttk.Entry(footer, textvariable=self.model_var,
-                  font=("Microsoft YaHei", 9), width=12).pack(side="left", padx=(0, 8))
+        ttk.Entry(footer, textvariable=self.model_var, font=("Microsoft YaHei", 9), width=12).pack(side="left", padx=(0, 8))
         ttk.Button(footer, text="保存", command=self._save_cfg).pack(side="left")
 
     # ------------------------------------------------------------------ #
@@ -197,8 +178,14 @@ class KWikiApp:
         self.cfg.set("llm_url", self.llm_url_var.get().strip())
         self.cfg.set("model", self.model_var.get().strip())
         self.cfg.save()
-        self.llm_client = None  # 重置，下次用新配置
+        self.llm_client = None
         self._log(self.ingest_log, "配置已保存", "ok")
+
+    def _save_prompts(self):
+        for key, txt in self._prompt_entries.items():
+            self.cfg.set_prompt(key, txt.get("1.0", "end-1c"))
+        self.cfg.save()
+        self._log(self.ingest_log, "提示词已保存，立即生效", "ok")
 
     def _get_llm(self):
         if self.llm_client is None:
@@ -215,12 +202,11 @@ class KWikiApp:
         if not inp:
             messagebox.showwarning("输入为空", "请粘贴链接或选择文件")
             return
-        if not vault or not os.path.exists(vault):
-            messagebox.showerror("路径无效", f"Vault 不存在:\n{vault}")
+        if not vault:
+            messagebox.showerror("路径无效", "请设置 Vault 路径")
             return
-
         self._log(self.ingest_log, f"摄入: {inp[:80]}", "info")
-        self.ingest_progress.config(text="抓取内容中...")
+        self.ingest_progress.config(text="处理中...")
         t = threading.Thread(target=self._ingest_bg, args=(inp, vault), daemon=True)
         t.start()
 
@@ -228,18 +214,14 @@ class KWikiApp:
         try:
             ctype = fetchers.detect_type(inp)
             self._log(self.ingest_log, f"类型: {ctype}", "info")
-
             data = fetchers.fetch_content(inp, ctype)
-            self._log(self.ingest_log, f"抓取完成: {data.get('title', 'untitled')[:40]}", "ok")
-
+            self._log(self.ingest_log, f"抓取: {data.get('title', 'untitled')[:40]}", "ok")
             llm = self._get_llm()
             result = run_ingest(vault, data["text"], inp, ctype,
-                                data.get("title", ""), llm)
-
-            self._log(self.ingest_log, f"原始文件: {os.path.basename(result['raw'])}", "ok")
-            self._log(self.ingest_log, f"Wiki 条目: {os.path.basename(result['wiki'])}", "ok")
-            self.ingest_progress.config(text=f"成功: {result['wiki']}")
-
+                               data.get("title", ""), llm, cfg=self.cfg)
+            self._log(self.ingest_log, f"raw/: {result['raw']}", "info")
+            self._log(self.ingest_log, f"wiki/: {result['wiki']}", "ok")
+            self.ingest_progress.config(text=f"完成: {result['wiki']}")
         except Exception as e:
             import traceback
             self._log(self.ingest_log, f"错误: {e}", "err")
@@ -254,10 +236,9 @@ class KWikiApp:
         if not q:
             messagebox.showwarning("问题为空", "请输入要查询的问题")
             return
-        if not vault or not os.path.exists(vault):
-            messagebox.showerror("路径无效", f"Vault 不存在:\n{vault}")
+        if not vault:
+            messagebox.showerror("路径无效", "请设置 Vault 路径")
             return
-
         self._log(self.query_result, f"问题: {q}", "info")
         t = threading.Thread(target=self._query_bg, args=(q, vault), daemon=True)
         t.start()
@@ -265,23 +246,22 @@ class KWikiApp:
     def _query_bg(self, q, vault):
         try:
             llm = self._get_llm()
-            result = run_query(q, vault, llm)
-            answer = result.get("answer", "")
-            self._log(self.query_result, f"回答:\n{answer[:500]}", "ok")
+            result = run_query(q, vault, llm, cfg=self.cfg)
+            self._log(self.query_result, f"回答:\n{result.get('answer','')[:600]}", "ok")
             if result.get("sources"):
                 self._log(self.query_result, f"来源: {', '.join(result['sources'][:5])}", "title")
             if result.get("gaps"):
                 self._log(self.query_result, f"知识缺口: {', '.join(result['gaps'])}", "warn")
+            self._log(self.query_result, f"置信度: {result.get('confidence','?')}", "info")
         except Exception as e:
             self._log(self.query_result, f"错误: {e}", "err")
 
     # ---- Lint ---- #
     def _do_lint(self):
         vault = self.vault_var.get().strip()
-        if not vault or not os.path.exists(vault):
-            messagebox.showerror("路径无效", f"Vault 不存在:\n{vault}")
+        if not vault:
+            messagebox.showerror("路径无效", "请设置 Vault 路径")
             return
-
         self._log(self.lint_result, "开始扫描 wiki/ ...", "info")
         t = threading.Thread(target=self._lint_bg, args=(vault,), daemon=True)
         t.start()
@@ -289,19 +269,23 @@ class KWikiApp:
     def _lint_bg(self, vault):
         try:
             llm = self._get_llm()
-            report = run_lint(vault, llm)
+            report = run_lint(vault, llm, cfg=self.cfg)
             score = report.get("score", "?")
-            self._log(self.lint_result, f"质量评分: {score} / 100", "ok")
+            self._log(self.lint_result, f"质量评分: {score} / 100",
+                       "ok" if isinstance(score, int) and score >= 70 else "warn")
             stats = report.get("stats", {})
             self._log(self.lint_result,
-                       f"条目数: {stats.get('total_entries',0)}  |  链接: {stats.get('total_links',0)}",
+                       f"条目: {stats.get('total_entries',0)}  链接: {stats.get('total_links',0)}",
                        "title")
             issues = report.get("issues", [])
-            self._log(self.lint_result, f"发现问题: {len(issues)} 个", "warn" if issues else "ok")
+            self._log(self.lint_result,
+                       f"发现问题: {len(issues)} 个",
+                       "warn" if issues else "ok")
             for issue in issues[:10]:
+                tag = "warn" if issue.get("severity") in ("high","medium") else "info"
                 self._log(self.lint_result,
                            f"[{issue.get('severity','?')}] {issue.get('title','')}: {issue.get('description','')}",
-                           "warn" if issue.get("severity") == "high" else "info")
+                           tag)
         except Exception as e:
             self._log(self.lint_result, f"错误: {e}", "err")
 

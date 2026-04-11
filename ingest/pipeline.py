@@ -4,12 +4,15 @@ from pathlib import Path
 from .finder import find_related
 
 
-def run_ingest(vault_path, content, source_url, content_type, title, llm_client):
+def run_ingest(vault_path, content, source_url, content_type, title, llm_client, cfg=None):
     vault = Path(vault_path)
-    wiki_dir = vault / "wiki"
+
+    # 确保三个目录都存在
     raw_dir = vault / "raw"
-    wiki_dir.mkdir(parents=True, exist_ok=True)
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    wiki_dir = vault / "wiki"
+    outputs_dir = vault / "outputs"
+    for d in [raw_dir, wiki_dir, outputs_dir]:
+        d.mkdir(parents=True, exist_ok=True)
 
     # 1. 保存原始内容到 raw/
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -40,13 +43,20 @@ def run_ingest(vault_path, content, source_url, content_type, title, llm_client)
         for entry in related[:3]:
             existing_info += f"\n### {entry['title']}\n{entry['summary'][:300]}\n"
 
-    # 4. LLM 摄入
+    # 4. LLM 摄入（从 config 读提示词）
+    prompts = None
+    if cfg:
+        prompts = {
+            "system": cfg.get_prompt("prompt_ingest_system"),
+            "user": cfg.get_prompt("prompt_ingest_user"),
+        }
     refined = llm_client.ingest(
         raw_text=content,
         content_type=content_type,
         title=title,
         source_url=source_url,
         existing_knowledge=existing_info,
+        prompts=prompts,
     )
 
     # 5. 写 wiki/ 条目
