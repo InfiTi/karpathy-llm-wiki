@@ -1,59 +1,70 @@
+"""
+wiki: Obsidian wiki 写入工具
+写入位置：vault/wiki/ 子目录
+"""
+import os, re, datetime
+from pathlib import Path
 
-"""wiki: Obsidian wiki 文件写入"""
-import os, re
-from datetime import datetime
 
-def slugify(title):
-    s = re.sub(r"[\\/:*?\"<>|]", "", title)
-    s = re.sub(r"\s+", "-", s)
-    return s.strip("-") or "untitled"
+def write_wiki_entry(vault_path, data, source_url, filename_hint=""):
+    """
+    将结构化数据写入 vault/wiki/ 目录
 
-class WikiWriter:
-    def __init__(self, vault_path):
-        self.vault = vault_path
+    data = {
+        "title": "...",
+        "tags": [...],
+        "summary": "...",
+        "key_points": [...],
+        "wikilinks": [...],
+        "metadata": {...}
+    }
+    """
+    wiki_dir = Path(vault_path) / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
 
-    def write(self, refined_data, source_url=""):
-        title = refined_data.get("title") or "untitled"
-        tags = refined_data.get("tags") or []
-        summary = refined_data.get("summary") or ""
-        key_points = refined_data.get("key_points") or []
-        wikilinks = refined_data.get("wikilinks") or []
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        safe_title = title.replace('"', '\\"')
-        tags_str = "\n  - ".join(tags) if tags else ""
-        source_str = f"\n  source: {source_url}" if source_url else ""
-        frontmatter = (
-            f"---\n"
-            f'title: "{safe_title}"\n'
-            f"created: {date_str}\n"
-            f"tags:\n"
-            f"  - {tags_str}{source_str}\n"
-            f"---\n\n"
-        )
-        body = [f"# {title}\n"]
-        if summary:
-            body.append(f"## 摘要\n{summary}\n")
-        if key_points:
-            body.append("## 核心要点\n")
-            for pt in key_points:
-                body.append(f"- {pt}")
-            body.append("")
-        if wikilinks:
-            body.append("## 相关概念\n")
-            for link in wikilinks[:10]:
-                body.append(f"- [[{link}]]")
-            body.append("")
-        if source_url:
-            body.append(f"\n---\n**来源**: {source_url}\n")
-        content = frontmatter + "\n".join(body)
-        slug = slugify(title)[:80]
-        filename = f"{slug}.md"
-        filepath = os.path.join(self.vault, filename)
-        counter = 1
-        while os.path.exists(filepath):
-            filename = f"{slug}-{counter}.md"
-            filepath = os.path.join(self.vault, filename)
-            counter += 1
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
-        return filepath
+    title = data.get("title", filename_hint or "untitled")
+    slug = re.sub(r"[\\/:*?\"<>|\s]+", "-", title.strip())[:60]
+    wiki_path = wiki_dir / f"{slug}.md"
+
+    tags = data.get("tags", [])
+    summary = data.get("summary", "")
+    key_points = data.get("key_points", [])
+    related = data.get("wikilinks", [])
+    meta = data.get("metadata", {})
+
+    lines = [
+        "---",
+        f'title: "{title}"',
+        f"created: {datetime.datetime.now().isoformat()}",
+        "tags:",
+    ]
+    for tag in tags:
+        lines.append(f"  - {tag}")
+    lines.append(f"source: {source_url or ''}")
+    if meta.get("uploader"):
+        lines.append(f"uploader: {meta['uploader']}")
+    if meta.get("duration"):
+        lines.append(f"duration: {meta['duration']}")
+    lines.append("---")
+    lines.append("")
+    lines.append(f"# {title}")
+    lines.append("")
+    if summary:
+        lines.append(f"## 摘要\n{summary}")
+        lines.append("")
+    if key_points:
+        lines.append("## 核心要点\n")
+        for pt in key_points:
+            lines.append(f"- {pt}")
+        lines.append("")
+    if related:
+        lines.append("## 相关概念\n")
+        for r in related[:10]:
+            safe = re.sub(r"[\\/:*?\"<>|]", "", r)
+            lines.append(f"- [[{safe}]]")
+        lines.append("")
+    if source_url:
+        lines.append(f"\n---\n**来源**: {source_url}")
+
+    wiki_path.write_text("\n".join(lines), encoding="utf-8")
+    return str(wiki_path)
