@@ -4,13 +4,11 @@
   "description": "Local LLM Wiki system based on Karpathy's concept - Ingest, Query, Lint",
   "main": "src/main/index.js",
   "scripts": {
-    "start": "electron-forge start",
-    "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:3000 && npm run dev:electron\"",
+    "dev": "npm run build:core && concurrently -k \"npm run dev:renderer\" \"wait-on http://localhost:3000 && npm run dev:electron\"",
+    "build:core": "node scripts/build-core.js",
     "dev:renderer": "vite --port 3000",
     "dev:electron": "electron .",
-    "build": "vite build && electron-builder",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "build": "npm run build:core && vite build && electron-builder",
     "test": "jest",
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx"
   },

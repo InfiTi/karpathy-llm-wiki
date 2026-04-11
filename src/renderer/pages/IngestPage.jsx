@@ -1,27 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import useStore from '../store/useStore';
 
 export default function IngestPage() {
-  const { config, addLog, setIngestProgress, setIngestStatus, setIngestCurrentFile } = useStore();
+  const { config, addLog } = useStore();
   const [files, setFiles] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState('');
   const [results, setResults] = useState([]);
-  const abortRef = useRef(false);
+  const [abortRef] = useState({ current: false });
+
+  // Subscribe to progress events from main process
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    const unsubscribe = window.electronAPI.onIngestProgress((data) => {
+      if (data.stage) setCurrentFile(data.filePath?.split('\\').pop() || data.filePath || '');
+    });
+    return unsubscribe;
+  }, []);
 
   const selectFiles = async () => {
     if (!window.electronAPI) return;
-    const paths = await window.electronAPI.selectFile({ 
-      filters: [{ name: '支持的文件', extensions: ['txt', 'md', 'pdf', 'html', 'csv', 'json'] }] 
+    const paths = await window.electronAPI.selectFile({
+      filters: [{ name: '支持的文件', extensions: ['txt', 'md', 'html', 'csv', 'json'] }]
     });
-    if (paths && paths.length > 0) {
+    if (paths?.length > 0) {
       const fileInfos = await Promise.all(paths.map(async p => {
         const stat = await window.electronAPI.stat(p);
         const name = p.split('\\').pop();
         return { path: p, name, size: stat.size };
       }));
-      setFiles(prev => [...prev, ...fileInfos.filter(f => !prev.some(p => p.path === f.path))]);
+      setFiles(prev => [...prev, ...fileInfos.filter(f => !prev.some(x => x.path === f.path))]);
     }
   };
 
@@ -39,7 +48,7 @@ export default function IngestPage() {
           return { path: e.path, name: e.name, size: stat.size };
         })
     );
-    setFiles(prev => [...prev, ...fileInfos.filter(f => !prev.some(p => p.path === f.path))]);
+    setFiles(prev => [...prev, ...fileInfos.filter(f => !prev.some(x => x.path === f.path))]);
   };
 
   const removeFile = (path) => setFiles(prev => prev.filter(f => f.path !== path));
@@ -51,31 +60,28 @@ export default function IngestPage() {
     setResults([]);
     addLog('info', `开始 Ingest，共 ${files.length} 个文件...`);
 
-    for (let i = 0; i < files.length; i++) {
-      if (abortRef.current) break;
-      const file = files[i];
-      setProgress(Math.round(((i) / files.length) * 100));
-      setCurrentFile(file.name);
-      setIngestCurrentFile(file.name);
+    const filePaths = files.map(f => f.path);
 
-      // Simulate processing via renderer-side call to main process
-      // In real implementation, this would use IPC to call the ingest pipeline
-      // For now, we simulate LLM processing delay
-      await new Promise(r => setTimeout(r, 1500));
-
-      if (!abortRef.current) {
-        setResults(prev => [...prev, { name: file.name, status: 'success', message: '处理完成' }]);
-        addLog('success', `✓ ${file.name} 处理完成`);
-      }
+    try {
+      const allResults = await window.electronAPI.ingestProcessBatch(filePaths);
+      const successCount = allResults.filter(r => r.success).length;
+      setResults(allResults.map(r => ({
+        name: r.title || r.filePath?.split('\\').pop() || '未知',
+        status: r.success ? 'success' : 'error',
+        message: r.success ? '处理完成' : r.error,
+        path: r.savedPath,
+      })));
+      addLog(successCount === allResults.length ? 'success' : 'warning',
+        `✅ Ingest 完成！${successCount}/${allResults.length} 成功`);
+    } catch (err) {
+      addLog('error', `Ingest 失败: ${err.message}`);
     }
 
     setProgress(100);
     setRunning(false);
-    setIngestStatus('done');
-    addLog('success', `✅ Ingest 完成！共处理 ${results.length} 个文件`);
   };
 
-  const abortIngest = () => { abortRef.current = true; };
+  const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
 
   return (
     <div>
@@ -113,7 +119,8 @@ export default function IngestPage() {
                       {(f.size / 1024).toFixed(1)} KB
                     </td>
                     <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                      <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => removeFile(f.path)}>×</button>
+                      <button className="btn btn-danger" style={{ padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => removeFile(f.path)}>×</button>
                     </td>
                   </tr>
                 ))}
@@ -127,7 +134,9 @@ export default function IngestPage() {
         )}
 
         <div style={{ marginTop: 16 }}>
-          <div className="text-muted mb-8">待处理: {files.length} 个文件</div>
+          <div className="text-muted mb-8">
+            待处理: {files.length} 个文件（{(totalSize / 1024 / 1024).toFixed(1)} MB）
+          </div>
           {!config.projectRoot && (
             <div style={{ color: 'var(--accent-red)', fontSize: 13 }}>⚠️ 请先在「项目初始化」设置项目目录</div>
           )}
@@ -139,22 +148,22 @@ export default function IngestPage() {
         <div className="card mt-16">
           <div className="card-title">处理进度</div>
           <div className="progress-bar" style={{ marginBottom: 8 }}>
-            <div className="progress-fill" style={{ width: `${progress}%`, background: running ? 'var(--accent-blue)' : 'var(--accent-green)' }} />
+            <div className="progress-fill" style={{
+              width: `${progress}%`,
+              background: running ? 'var(--accent-blue)' : 'var(--accent-green)'
+            }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
             <span>{currentFile}</span>
             <span>{progress}%</span>
-          </div>
-          <div className="mt-8">
-            {running && <button className="btn btn-danger" onClick={abortIngest}>⏹ 停止</button>}
           </div>
         </div>
       )}
 
       {/* Run Button */}
       <div className="mt-16">
-        <button 
-          className="btn btn-primary" 
+        <button
+          className="btn btn-primary"
           onClick={runIngest}
           disabled={!files.length || !config.projectRoot || running}
           style={{ fontSize: 15, padding: '10px 32px' }}
@@ -172,8 +181,18 @@ export default function IngestPage() {
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {results.map((r, i) => (
-              <div key={i} style={{ padding: '4px 0', fontSize: 12, color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                {r.status === 'success' ? '✓' : '✗'} {r.name}
+              <div key={i} style={{ padding: '4px 0', fontSize: 12 }}>
+                <span style={{ color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                  {r.status === 'success' ? '✓' : '✗'}
+                </span>
+                <span style={{ marginLeft: 8 }}>{r.name}</span>
+                {r.message && r.status !== 'success' && (
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>— {r.message}</span>
+                )}
+                {r.path && (
+                  <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 11 }}
+                    onClick={() => window.electronAPI?.openPath(r.path)}>打开</button>
+                )}
               </div>
             ))}
           </div>
