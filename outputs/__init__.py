@@ -513,3 +513,189 @@ def _generate_report_markdown(stats):
         report += f"| {page['title']} | {page['type']} | {page['links']} | {page['content_length']} |\n"
     
     return report
+
+
+def generate_tag_cloud_html(wiki_dir, output_path):
+    """
+    生成标签云 HTML 可视化页面
+    
+    Args:
+        wiki_dir: wiki 目录路径
+        output_path: 输出 HTML 文件路径
+    """
+    wiki_dir = Path(wiki_dir)
+    output_path = Path(output_path)
+    
+    if not wiki_dir.exists():
+        print(f"[ERROR] wiki 目录不存在: {wiki_dir}")
+        return None
+    
+    stats = _collect_stats(wiki_dir)
+    tags = stats['tag_distribution']
+    
+    html_content = _generate_tag_cloud_html(tags)
+    
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    print(f"[OUTPUT] 标签云已生成: {output_path}")
+    return str(output_path)
+
+
+def _generate_tag_cloud_html(tags):
+    """生成标签云 HTML 内容"""
+    import json
+    
+    tags_json = json.dumps(
+        [{"tag": tag, "count": count} for tag, count in sorted(tags.items(), key=lambda x: -x[1])],
+        ensure_ascii=False
+    )
+    
+    return f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标签云</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 40px;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 40px;
+        }}
+        .header h1 {{
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }}
+        .header p {{
+            color: rgba(255, 255, 255, 0.7);
+        }}
+        .tag-cloud {{
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            padding: 20px;
+        }}
+        .tag {{
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }}
+        .tag:hover {{
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }}
+        .tag-name {{
+            font-weight: 500;
+        }}
+        .tag-count {{
+            background: rgba(79, 195, 247, 0.3);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #4fc3f7;
+        }}
+        .stats {{
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }}
+        .stat {{
+            text-align: center;
+        }}
+        .stat-value {{
+            font-size: 28px;
+            font-weight: 600;
+            color: #4fc3f7;
+        }}
+        .stat-label {{
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 5px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏷️ 标签云</h1>
+            <p>知识库标签分布可视化</p>
+        </div>
+        <div class="tag-cloud" id="tag-cloud"></div>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="total-tags">0</div>
+                <div class="stat-label">标签总数</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="unique-tags">0</div>
+                <div class="stat-label">独立标签</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const tags = {tags_json};
+        
+        const totalTags = tags.reduce((sum, t) => sum + t.count, 0);
+        document.getElementById('total-tags').textContent = totalTags;
+        document.getElementById('unique-tags').textContent = tags.length;
+        
+        const maxCount = Math.max(...tags.map(t => t.count));
+        const minCount = Math.min(...tags.map(t => t.count));
+        
+        const tagCloud = document.getElementById('tag-cloud');
+        
+        tags.forEach(tagData => {{
+            const tag = document.createElement('div');
+            tag.className = 'tag';
+            
+            const size = minCount === maxCount ? 16 : 12 + (tagData.count - minCount) / (maxCount - minCount) * 12;
+            tag.style.fontSize = size + 'px';
+            
+            const hue = (tagData.count / maxCount) * 200 + 180;
+            tag.style.borderColor = `hsla(${{hue}}, 70%, 60%, 0.5)`;
+            
+            tag.innerHTML = `
+                <span class="tag-name">${{tagData.tag}}</span>
+                <span class="tag-count">${{tagData.count}}</span>
+            `;
+            
+            tag.onclick = () => {{
+                console.log('Clicked tag:', tagData.tag);
+            }};
+            
+            tagCloud.appendChild(tag);
+        }});
+    </script>
+</body>
+</html>'''
