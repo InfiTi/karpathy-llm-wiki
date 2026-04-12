@@ -110,10 +110,14 @@ def _save_report(outputs_dir, report, auto_issues, entries):
 
 
 def _auto_check(entries):
+    """自动质量检查（不调用 LLM）"""
     issues = []
     seen_titles = {}
+    
     for e in entries:
         t_lower = e["title"].lower()
+        
+        # 1. 重复标题检查
         if t_lower in seen_titles:
             issues.append({
                 "type": "duplicate",
@@ -123,7 +127,9 @@ def _auto_check(entries):
             })
         else:
             seen_titles[t_lower] = e["title"]
+    
     for e in entries:
+        # 2. 内容完整性检查
         if not e["summary"] or len(e["summary"]) < 20:
             issues.append({
                 "type": "empty_summary",
@@ -131,6 +137,8 @@ def _auto_check(entries):
                 "message": f"'{e['title']}' 摘要为空或过短",
                 "file": e["file"],
             })
+        
+        # 3. 标签检查
         if not e["tags"]:
             issues.append({
                 "type": "no_tags",
@@ -138,6 +146,61 @@ def _auto_check(entries):
                 "message": f"'{e['title']}' 缺少标签",
                 "file": e["file"],
             })
+        
+        # 4. 内容长度检查
+        if len(e["body"]) < 500:
+            issues.append({
+                "type": "content_incomplete",
+                "severity": "high",
+                "message": f"'{e['title']}' 内容过短（{len(e['body'])} 字符），可能缺少核心内容",
+                "file": e["file"],
+            })
+        
+        # 5. 结构检查
+        if not re.search(r"^##\s+", e["body"], re.MULTILINE):
+            issues.append({
+                "type": "structure_missing",
+                "severity": "medium",
+                "message": f"'{e['title']}' 缺少二级标题，结构不清晰",
+                "file": e["file"],
+            })
+        
+        # 6. 链接检查
+        if len(e["links"]) < 5:
+            issues.append({
+                "type": "links_insufficient",
+                "severity": "medium",
+                "message": f"'{e['title']}' 内部链接不足（当前 {len(e['links'])} 个，建议至少 5 个）",
+                "file": e["file"],
+            })
+        
+        # 7. 核心内容检查
+        if not re.search(r"核心观点|方法论|实战策略|案例分析", e["body"]):
+            issues.append({
+                "type": "core_content_missing",
+                "severity": "medium",
+                "message": f"'{e['title']}' 缺少核心观点、方法论或实战策略",
+                "file": e["file"],
+            })
+        
+        # 8. 营销内容检查
+        if re.search(r"扫码预约|直播预约|年度成长|量身打造", e["body"]):
+            issues.append({
+                "type": "marketing_content",
+                "severity": "high",
+                "message": f"'{e['title']}' 包含营销内容，需要过滤",
+                "file": e["file"],
+            })
+        
+        # 9. 标题格式检查
+        if e["title"] and (e["title"].startswith("《") or e["title"].startswith("【")):
+            issues.append({
+                "type": "title_format",
+                "severity": "low",
+                "message": f"'{e['title']}' 标题格式不规范，建议移除书名号或方括号",
+                "file": e["file"],
+            })
+    
     return issues
 
 

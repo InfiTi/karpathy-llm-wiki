@@ -581,6 +581,41 @@ def run_ingest(vault_path, content, source_url, content_type, title,
     # 7. 生成索引页面
     index_path = _generate_index_page(vault)
     
+    # 8. 质量检查（新增）
+    quality_issues = []
+    try:
+        # 使用函数内部导入，避免循环依赖
+        from lint import _auto_check, _parse
+        
+        # 收集所有 wiki 条目
+        entries = []
+        for md_file in wiki_dir.glob("*.md"):
+            if md_file.name == "index.md":
+                continue
+            try:
+                content = md_file.read_text(encoding="utf-8", errors="ignore")
+                parsed = _parse(content)
+                if parsed.get("title"):
+                    entries.append({
+                        "file": str(md_file),
+                        "title": parsed.get("title", md_file.stem),
+                        "tags": parsed.get("tags", []),
+                        "summary": parsed.get("summary", ""),
+                        "body": parsed.get("body", ""),
+                        "links": parsed.get("links", []),
+                    })
+            except Exception as e:
+                print(f"[WARNING] 解析文件 {md_file} 时出错: {e}")
+        
+        # 执行质量检查
+        if entries:
+            quality_issues = _auto_check(entries)
+            print(f"[LINT] 发现 {len(quality_issues)} 个质量问题")
+            for issue in quality_issues[:5]:  # 只显示前 5 个问题
+                print(f"[LINT] {issue['type']}: {issue['message']}")
+    except Exception as e:
+        print(f"[ERROR] 质量检查时出错: {e}")
+    
     # 统计真正的 wiki 页面数量（不包括索引页面）
     wiki_only_paths = [path for path in wiki_paths if "index.md" not in path]
     
@@ -600,4 +635,5 @@ def run_ingest(vault_path, content, source_url, content_type, title,
         "raw": str(raw_path),
         "wiki": wiki_only_paths,  # 只包含真正的 wiki 页面
         "all": all_paths,         # 包含所有页面，包括索引页面
+        "quality_issues": quality_issues,  # 新增：质量问题列表
     }
