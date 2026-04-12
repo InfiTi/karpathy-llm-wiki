@@ -493,6 +493,91 @@ def _split_markdown_pages(md_text):
     return [md_text]
 
 
+def build_knowledge_graph(wiki_dir):
+    """
+    建立知识图谱，形成知识网络
+    返回: {
+        "nodes": [...],  # 知识节点
+        "edges": [...]   # 知识关联
+    }
+    """
+    import json
+    
+    graph = {
+        "nodes": [],
+        "edges": []
+    }
+    
+    # 使用函数内部导入，避免循环依赖
+    from lint import _parse
+    
+    # 1. 提取所有知识节点
+    for md_file in wiki_dir.glob("*.md"):
+        if md_file.name == "index.md":
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8", errors="ignore")
+            parsed = _parse(content)
+            
+            node = {
+                "id": md_file.stem,
+                "title": parsed.get("title", md_file.stem),
+                "type": parsed.get("type", "note"),
+                "tags": parsed.get("tags", []),
+                "summary": parsed.get("summary", "")[:200],
+                "links": parsed.get("links", []),
+                "file": str(md_file.name)
+            }
+            graph["nodes"].append(node)
+        except Exception as e:
+            print(f"[WARNING] 解析文件 {md_file} 时出错: {e}")
+    
+    # 2. 建立知识关联（基于链接）
+    for node in graph["nodes"]:
+        for link in node.get("links", []):
+            clean_link = _clean_wikilink(link)
+            target_slug = _slugify(clean_link)
+            
+            # 检查目标节点是否存在
+            target_exists = any(n["id"] == target_slug for n in graph["nodes"])
+            
+            graph["edges"].append({
+                "source": node["id"],
+                "target": target_slug,
+                "type": "references",
+                "target_exists": target_exists
+            })
+    
+    # 3. 建立知识关联（基于标签）
+    tag_groups = {}
+    for node in graph["nodes"]:
+        for tag in node.get("tags", []):
+            if tag not in tag_groups:
+                tag_groups[tag] = []
+            tag_groups[tag].append(node["id"])
+    
+    for tag, node_ids in tag_groups.items():
+        if len(node_ids) > 1:
+            for i, node1 in enumerate(node_ids):
+                for node2 in node_ids[i+1:]:
+                    # 检查是否已存在关联
+                    edge_exists = any(
+                        (e["source"] == node1 and e["target"] == node2) or
+                        (e["source"] == node2 and e["target"] == node1)
+                        for e in graph["edges"]
+                    )
+                    if not edge_exists:
+                        graph["edges"].append({
+                            "source": node1,
+                            "target": node2,
+                            "type": "same_tag",
+                            "tag": tag
+                        })
+    
+    print(f"[GRAPH] 知识图谱生成完成: {len(graph['nodes'])} 个节点, {len(graph['edges'])} 条边")
+    return graph
+
+
 def run_ingest(vault_path, content, source_url, content_type, title,
                llm_client, cfg=None):
     """
@@ -616,6 +701,21 @@ def run_ingest(vault_path, content, source_url, content_type, title,
     except Exception as e:
         print(f"[ERROR] 质量检查时出错: {e}")
     
+    # 9. 生成知识图谱（新增）
+    knowledge_graph_path = None
+    try:
+        import json
+        
+        graph = build_knowledge_graph(wiki_dir)
+        knowledge_graph_path = wiki_dir / "knowledge_graph.json"
+        knowledge_graph_path.write_text(
+            json.dumps(graph, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+        print(f"[GRAPH] 知识图谱已保存: {knowledge_graph_path}")
+    except Exception as e:
+        print(f"[ERROR] 生成知识图谱时出错: {e}")
+    
     # 统计真正的 wiki 页面数量（不包括索引页面）
     wiki_only_paths = [path for path in wiki_paths if "index.md" not in path]
     
@@ -635,5 +735,6 @@ def run_ingest(vault_path, content, source_url, content_type, title,
         "raw": str(raw_path),
         "wiki": wiki_only_paths,  # 只包含真正的 wiki 页面
         "all": all_paths,         # 包含所有页面，包括索引页面
-        "quality_issues": quality_issues,  # 新增：质量问题列表
+        "quality_issues": quality_issues,  # 质量问题列表
+        "knowledge_graph": str(knowledge_graph_path) if knowledge_graph_path else None,  # 知识图谱路径
     }
