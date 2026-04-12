@@ -46,6 +46,37 @@ def _filter_marketing_content(text):
     return text
 
 
+def _remove_duplicate_content(text):
+    """移除重复内容，特别是总结部分"""
+    lines = text.split('\n')
+    seen_content = set()
+    result_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        # 如果是空行，直接保留
+        if not stripped:
+            result_lines.append(line)
+            continue
+        
+        # 检查是否是列表项（以数字或-开头）
+        is_list_item = re.match(r'^(\d+\.|-)\s+', stripped)
+        if is_list_item:
+            # 对于列表项，提取核心内容（去掉序号和开头空格）
+            core_content = re.sub(r'^(\d+\.|-)\s+', '', stripped)
+            core_content = core_content.strip()
+            if core_content and core_content not in seen_content:
+                seen_content.add(core_content)
+                result_lines.append(line)
+        else:
+            # 对于普通行，检查是否有重复
+            if stripped not in seen_content:
+                seen_content.add(stripped)
+                result_lines.append(line)
+    
+    return '\n'.join(result_lines)
+
+
 def _parse_md_frontmatter(md_text):
     """
     解析 Markdown 中的 YAML frontmatter。
@@ -106,6 +137,9 @@ def _parse_md_frontmatter(md_text):
                         elif key == "created":
                             meta["created"] = val
                         elif key == "source":
+                            # 清理 source 字段，移除 Markdown 链接格式
+                            # 处理 [链接文本](链接地址) 格式
+                            val = re.sub(r"\[.*?\]\((.*?)\)", r"\1", val)
                             meta["source"] = val
                         elif key == "linked":
                             # linked: [a, b] or linked: a, b
@@ -140,6 +174,10 @@ def _ensure_frontmatter(md_text, page_type, source_url):
     # 过滤营销内容
     body = _filter_marketing_content(body)
     print(f"[DEBUG] 过滤后 body 长度: {len(body)}")
+    
+    # 移除重复内容
+    body = _remove_duplicate_content(body)
+    print(f"[DEBUG] 去重后 body 长度: {len(body)}")
 
     # 从 body 中提取标题（第一个 # 标题）
     title_match = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
