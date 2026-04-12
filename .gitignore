@@ -11,6 +11,11 @@ venv/
 env/
 .venv/
 
+# Node
+node_modules/
+out/
+*.local
+
 # OS
 .DS_Store
 Thumbs.db
@@ -19,3 +24,6 @@ Thumbs.db
 *.tmp
 *.log
 *.bak
+
+# Environment
+.env

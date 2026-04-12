@@ -192,6 +192,7 @@ class KWikiApp:
             self.llm_client = LLMClient(
                 self.llm_url_var.get().strip(),
                 self.model_var.get().strip(),
+                enable_thinking=self.cfg.get("enable_thinking", False),
             )
         return self.llm_client
 
@@ -213,14 +214,18 @@ class KWikiApp:
     def _ingest_bg(self, inp, vault):
         try:
             ctype = fetchers.detect_type(inp)
-            self._log(self.ingest_log, f"类型: {ctype}", "info")
+            self._log(self.ingest_log, f"[1/6] 类型检测: {ctype}", "info")
+
+            self._log(self.ingest_log, f"[2/6] 正在抓取内容...", "info")
             data = fetchers.fetch_content(inp, ctype)
-            self._log(self.ingest_log, f"抓取: {data.get('title', 'untitled')[:40]}", "ok")
+            self._log(self.ingest_log, f"[3/6] 抓取完成: {data.get('title', 'untitled')[:40]} ({len(data.get('text',''))} 字)", "ok")
+
             llm = self._get_llm()
+            self._log(self.ingest_log, f"[4/6] LLM 编译开始（耐心等待，约 30-120s）...", "info")
             result = run_ingest(vault, data["text"], inp, ctype,
                                data.get("title", ""), llm, cfg=self.cfg)
-            self._log(self.ingest_log, f"raw/: {result['raw']}", "info")
-            self._log(self.ingest_log, f"wiki/: {result['wiki']}", "ok")
+            self._log(self.ingest_log, f"[5/6] raw/ 已写入: {result['raw']}", "info")
+            self._log(self.ingest_log, f"[6/6] wiki/ 已写入 {len(result['wiki'])} 个页面", "ok")
             self.ingest_progress.config(text=f"完成: {result['wiki']}")
         except Exception as e:
             import traceback

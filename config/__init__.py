@@ -24,6 +24,7 @@ DEFAULTS = {
     "llm_url": "http://localhost:11434/v1",
     "model": "qwen3.5",
     "api_key": "ollama",
+    "enable_thinking": False,
     # SCHEMA.md 文件路径
     "schema_path": SCHEMA_FILE,
     # 是否启用 SCHEMA 严格模式（替换旧的 JSON 格式）

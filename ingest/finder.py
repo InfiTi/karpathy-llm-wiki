@@ -44,17 +44,20 @@ def _parse_frontmatter(content):
     """解析 YAML frontmatter"""
     meta = {}
     if content.startswith("---"):
-        end = content.index("\n---\n")
-        block = content[4:end]
-        for line in block.split("\n"):
-            if line.startswith("tags:"):
-                continue
-            if ": " in line or ":" in line:
-                key, val = (line.split(": ", 1) if ": " in line else line.split(":", 1))
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if val:
-                    meta[key] = val
+        try:
+            end = content.index("\n---\n")
+            block = content[4:end]
+            for line in block.split("\n"):
+                if line.startswith("tags:"):
+                    continue
+                if ": " in line or ":" in line:
+                    key, val = (line.split(": ", 1) if ": " in line else line.split(":", 1))
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if val:
+                        meta[key] = val
+        except (ValueError, IndexError):
+            pass
     return meta
 
 
@@ -62,8 +65,11 @@ def _extract_summary(content):
     """提取摘要段落"""
     # 去掉 frontmatter
     if content.startswith("---"):
-        end = content.index("\n---\n")
-        body = content[end + 5:]
+        try:
+            end = content.index("\n---\n")
+            body = content[end + 5:]
+        except (ValueError, IndexError):
+            body = content
     else:
         body = content
     # 取第一段或摘要 section
