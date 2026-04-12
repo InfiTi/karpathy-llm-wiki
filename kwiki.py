@@ -16,7 +16,7 @@ from lint import run_lint
 class KWikiApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("KWiki v0.2.1 - Karpathy LLM Wiki")
+        self.root.title("KWiki v0.3.0 - SCHEMA v1.1 Mode")
         self.root.geometry("900x750")
         self.root.configure(bg="#f0f2f5")
 
@@ -34,8 +34,8 @@ class KWikiApp:
         main = ttk.Frame(self.root, padding=15)
         main.pack(fill="both", expand=True)
 
-        ttk.Label(main, text="KWiki v0.2.1", font=("Microsoft YaHei", 16, "bold")).pack(anchor="w")
-        ttk.Label(main, text="Ingest  ·  Query  ·  Lint  ·  提示词可配置",
+        ttk.Label(main, text="KWiki v0.3.0", font=("Microsoft YaHei", 16, "bold")).pack(anchor="w")
+        ttk.Label(main, text="SCHEMA v1.1 模式  ·  Ingest  ·  Query  ·  Lint",
                   foreground="#888", font=("Microsoft YaHei", 9)).pack(anchor="w", pady=(0, 10))
 
         nb = ttk.Notebook(main)
