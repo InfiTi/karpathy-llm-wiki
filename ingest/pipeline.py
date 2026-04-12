@@ -258,14 +258,9 @@ def _ensure_frontmatter(md_text, page_type, source_url):
         fm_lines.append(f"  - {tag}")
     fm_lines.append(f"created: {meta['created']}")
     if meta["source"]:
-        # 如果 source 是 URL，使用 Markdown 链接格式
-        if meta["source"].startswith("http://") or meta["source"].startswith("https://"):
-            fm_lines.append(f'source: "[{meta["source"]}]({meta["source"]})"')
-            print(f"[DEBUG] 使用 URL 链接格式: {meta['source']}")
-        else:
-            # 如果是本地文件路径，尝试创建相对链接
-            fm_lines.append(f"source: {meta['source']}")
-            print(f"[DEBUG] 使用本地路径格式: {meta['source']}")
+        # 直接使用纯 URL 格式，不使用 Markdown 链接格式
+        fm_lines.append(f'source: "{meta["source"]}"')
+        print(f"[DEBUG] 使用 source: {meta['source']}")
     else:
         fm_lines.append("source: ")
         print(f"[DEBUG] source 为空")
