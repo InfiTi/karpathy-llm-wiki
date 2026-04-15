@@ -71,10 +71,4 @@ export class QueryEngine {
     }
     return parts.join('\n\n---\n\n');
   }
-
-  /** Get backlinks for a document */
-  async getBacklinks(title) {
-    const graph = await this.wiki.buildLinkGraph();
-    return graph[title] || [];
-  }
 }

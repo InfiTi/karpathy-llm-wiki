@@ -26,7 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   wikiListDocuments: () => ipcRenderer.invoke('wiki:listDocuments'),
   wikiGetDocument: (title) => ipcRenderer.invoke('wiki:getDocument', title),
   wikiSearchDocuments: (query) => ipcRenderer.invoke('wiki:searchDocuments', query),
-  wikiBuildLinkGraph: () => ipcRenderer.invoke('wiki:buildLinkGraph'),
   wikiGetStats: () => ipcRenderer.invoke('wiki:getStats'),
 
   // ── Ingest ──────────────────────────────────────────────────────────────
@@ -41,7 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Query ───────────────────────────────────────────────────────────────
   queryAsk: (question) => ipcRenderer.invoke('query:ask', question),
   querySearch: (query, limit) => ipcRenderer.invoke('query:search', query, limit),
-  queryGetBacklinks: (title) => ipcRenderer.invoke('query:getBacklinks', title),
 
   // ── Lint ────────────────────────────────────────────────────────────────
   lintLintDocument: (filePath) => ipcRenderer.invoke('lint:lintDocument', filePath),

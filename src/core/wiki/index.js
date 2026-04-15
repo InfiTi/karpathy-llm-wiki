@@ -116,19 +116,6 @@ export class WikiManager {
     return new WikiDocument(filePath, content);
   }
 
-  /** Build a simple link graph */
-  async buildLinkGraph() {
-    const docs = await this.listDocuments();
-    const graph = {};
-    for (const doc of docs) {
-      for (const link of doc.links) {
-        if (!graph[link]) graph[link] = [];
-        graph[link].push(doc.title);
-      }
-    }
-    return graph;
-  }
-
   /** Search documents by title and tags */
   async searchDocuments(query) {
     const docs = await this.listDocuments();

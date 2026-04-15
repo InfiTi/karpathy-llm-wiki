@@ -200,22 +200,12 @@ ipcMain.handle('wiki:searchDocuments', async (event, query) => {
   } catch (err) { throw new Error(err.message); }
 });
 
-ipcMain.handle('wiki:buildLinkGraph', async () => {
-  try {
-    const wiki = new coreModules.WikiManager(getConfig().projectRoot);
-    return await wiki.buildLinkGraph();
-  } catch (err) { throw new Error(err.message); }
-});
-
 ipcMain.handle('wiki:getStats', async () => {
   try {
     const wiki = new coreModules.WikiManager(getConfig().projectRoot);
     const docs = await wiki.listDocuments();
-    const graph = await wiki.buildLinkGraph();
-    let totalLinks = 0;
-    for (const v of Object.values(graph)) totalLinks += v.length;
-    return { docCount: docs.length, linkCount: totalLinks };
-  } catch (err) { return { docCount: 0, linkCount: 0 }; }
+    return { docCount: docs.length };
+  } catch (err) { return { docCount: 0 }; }
 });
 
 // ============================================================================
@@ -265,13 +255,6 @@ ipcMain.handle('query:search', async (event, query, limit) => {
     const engine = new coreModules.QueryEngine(getConfig());
     return await engine.search(query, { limit: limit || 10 });
   } catch (err) { throw new Error(err.message); }
-});
-
-ipcMain.handle('query:getBacklinks', async (event, title) => {
-  try {
-    const engine = new coreModules.QueryEngine(getConfig());
-    return await engine.getBacklinks(title);
-  } catch (err) { return []; }
 });
 
 // ============================================================================
