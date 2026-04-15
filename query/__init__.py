@@ -297,9 +297,29 @@ def _write_backfill(wiki_dir, backfill):
 
 
 def _extract_keywords(text):
-    words = re.findall(r"[\w\u4e00-\u9fff]{2,}", text)
-    stop = {"the","and","for","with","from","about","a","an","of","to","in","on","by","what","how","why","is","are","can","do","this","that"}
-    return [w for w in words if w.lower() not in stop]
+    # 提取中文词汇和英文单词
+    # 1. 提取连续的中文词汇（2个或更多字符）
+    # 2. 提取英文单词
+    # 3. 提取单个中文字符作为补充
+    import re
+    
+    # 提取连续的中文词汇（2个或更多字符）
+    chinese_terms = re.findall(r"[\u4e00-\u9fff]{2,}", text)
+    
+    # 提取英文单词
+    english_words = re.findall(r"[a-zA-Z]{2,}", text)
+    
+    # 提取单个中文字符作为补充
+    chinese_chars = re.findall(r"[\u4e00-\u9fff]", text)
+    
+    # 合并所有关键词
+    all_words = chinese_terms + english_words + chinese_chars
+    
+    # 过滤停用词
+    stop = {"the","and","for","with","from","about","a","an","of","to","in","on","by","what","how","why","is","are","can","do","this","that","什么","是","的","了","在","有","和","我","他","她","它","们"}
+    
+    # 去重并返回
+    return list(set([w for w in all_words if w.lower() not in stop]))
 
 
 def _parse_frontmatter(content):

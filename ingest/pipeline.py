@@ -16,7 +16,8 @@ def _slugify(title):
     s = re.sub(r"^-+|-+$", "", s)
     # 空格变短横线，删除其他特殊字符
     s = re.sub(r"[\s/\\:#*?\"<>|]+", "-", s)
-    s = re.sub(r"-+", "-", s)
+    s = re.sub(r"-*-", "-", s)  # 多个连续的短横线替换为一个
+    s = s.strip("-")  # 去除首尾的短横线
     # 限制长度
     return s[:80].lower()
 
@@ -30,6 +31,65 @@ def _clean_wikilink(link):
     if '|' in link:
         link = link.split('|')[0].strip()
     return link
+
+
+def _translate_terms(text):
+    """将常见英文术语翻译成中文"""
+    term_map = {
+        # 保险相关
+        "indexed universal life insurance": "指数型万能寿险",
+        "indexed-universal-life-insurance": "指数型万能寿险",
+        "IUL": "指数型万能寿险 (IUL)",
+        "universal life": "万能寿险",
+        "whole life": "终身寿险",
+        "term life": "定期寿险",
+        "life insurance": "寿险",
+        "insurance": "保险",
+        
+        # 投资相关
+        "wealth management": "财富管理",
+        "wealth-management": "财富管理",
+        "risk management": "风险管理",
+        "risk-management": "风险管理",
+        "sp500": "标普500",
+        "sp500-index": "标普500指数",
+        "s&p 500": "标普500",
+        "tax planning": "税务规划",
+        "tax-planning": "税务规划",
+        "financial planning": "财务规划",
+        "financial-planning": "财务规划",
+        "inheritance": "财富传承",
+        "insurance product": "保险产品",
+        "insurance-product": "保险产品",
+        "market volatility": "市场波动",
+        "market-volatility": "市场波动",
+        "cash value": "现金价值",
+        "cash-value": "现金价值",
+        "premium payment": "保费支付",
+        "premium-payment": "保费支付",
+        "option pricing": "期权定价",
+        "option-pricing": "期权定价",
+        "bond yield": "债券收益",
+        "bond-yield": "债券收益",
+        "investment": "投资",
+        
+        # 其他
+        "concept": "概念",
+        "paper": "论文",
+        "person": "人物",
+        "tool": "工具",
+        "dataset": "数据集",
+        "note": "笔记",
+    }
+    
+    # 按术语长度降序排序，优先匹配长术语
+    sorted_terms = sorted(term_map.items(), key=lambda x: len(x[0]), reverse=True)
+    
+    for en_term, zh_term in sorted_terms:
+        # 不区分大小写的替换
+        text = re.sub(rf"\b{re.escape(en_term)}\b", zh_term, text, flags=re.IGNORECASE)
+    
+    return text
 
 
 def _filter_marketing_content(text):
@@ -115,7 +175,10 @@ def _parse_md_frontmatter(md_text):
                             continue
                         if in_tags:
                             if ls.startswith("-"):
-                                tags.append(ls.lstrip("-").strip())
+                                tag = ls.lstrip("-").strip()
+                                # 翻译标签中的术语
+                                tag = _translate_terms(tag)
+                                tags.append(tag)
                                 continue
                             elif ls and not ls.startswith(" ") and ":" not in ls:
                                 in_tags = False
@@ -128,6 +191,8 @@ def _parse_md_frontmatter(md_text):
                         key = k.strip().lower()
                         val = v.strip().strip('"').strip("'")
                         if key == "title":
+                            # 翻译标题中的术语
+                            val = _translate_terms(val)
                             meta["title"] = val
                         elif key == "type":
                             if val in PAGE_TYPES:
@@ -144,7 +209,16 @@ def _parse_md_frontmatter(md_text):
                         elif key == "linked":
                             # linked: [a, b] or linked: a, b
                             linked_str = val.strip("[]")
-                            meta["linked"] = [_clean_wikilink(x) for x in linked_str.split(",") if x.strip()]
+                            # 分割链接并清理
+                            linked_items = []
+                            for item in linked_str.split(","):
+                                # 清理空格和引号
+                                clean_item = item.strip().strip('"').strip("'")
+                                if clean_item:
+                                    linked_items.append(_clean_wikilink(clean_item))
+                            # 翻译链接中的术语
+                            linked_items = [_translate_terms(item) for item in linked_items]
+                            meta["linked"] = linked_items
                     meta["tags"] = tags
                     print(f"[DEBUG] 解析后 meta: {meta}")
         except Exception as e:
@@ -171,6 +245,10 @@ def _ensure_frontmatter(md_text, page_type, source_url):
     print(f"[DEBUG] 解析后 meta: {meta}")
     print(f"[DEBUG] 解析后 body 长度: {len(body)}")
 
+    # 翻译术语
+    body = _translate_terms(body)
+    print(f"[DEBUG] 翻译后 body 长度: {len(body)}")
+
     # 过滤营销内容
     body = _filter_marketing_content(body)
     print(f"[DEBUG] 过滤后 body 长度: {len(body)}")
@@ -183,6 +261,8 @@ def _ensure_frontmatter(md_text, page_type, source_url):
     title_match = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
     if not meta["title"] and title_match:
         meta["title"] = title_match.group(1).strip().strip("#").strip()
+        # 翻译标题中的术语
+        meta["title"] = _translate_terms(meta["title"])
         print(f"[DEBUG] 从 body 提取标题: {meta['title']}")
     
     # 确保标题不为空
@@ -191,6 +271,8 @@ def _ensure_frontmatter(md_text, page_type, source_url):
         first_sentence = body.strip().split('。')[0].split('.')[0].split('!')[0].split('?')[0]
         if first_sentence and len(first_sentence) > 5:
             meta["title"] = first_sentence[:50]  # 限制标题长度
+            # 翻译标题中的术语
+            meta["title"] = _translate_terms(meta["title"])
             print(f"[DEBUG] 从第一句话提取标题: {meta['title']}")
         else:
             meta["title"] = "Untitled"
@@ -200,6 +282,8 @@ def _ensure_frontmatter(md_text, page_type, source_url):
     wikilinks = re.findall(r"\[\[([^\]|]+?)\]\]", body)
     if not meta["linked"]:
         meta["linked"] = [_clean_wikilink(link) for link in wikilinks[:10]]
+        # 翻译链接中的术语
+        meta["linked"] = [_translate_terms(link) for link in meta["linked"]]
         print(f"[DEBUG] 从 body 提取链接: {meta['linked']}")
 
     # 补充缺失字段
@@ -265,7 +349,14 @@ def _ensure_frontmatter(md_text, page_type, source_url):
         fm_lines.append("source: ")
         print(f"[DEBUG] source 为空")
     if meta["linked"]:
-        linked_str = "[" + ", ".join(f'"{l}"' for l in meta["linked"]) + "]"
+        # 清理链接中的引号
+        clean_linked = []
+        for link in meta["linked"]:
+            # 移除链接中的引号
+            link = link.strip('"')
+            clean_linked.append(link)
+        
+        linked_str = "[" + ", ".join(f'"{l}"' for l in clean_linked) + "]"
         fm_lines.append(f"linked: {linked_str}")
         print(f"[DEBUG] 添加 linked: {linked_str}")
     fm_lines.append("---")
