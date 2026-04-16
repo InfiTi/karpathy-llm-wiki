@@ -1,0 +1,81 @@
+import path from 'path';
+import matter from 'gray-matter';
+import { WikiDocumentMetadata } from '@/types';
+
+export class WikiDocument {
+  public filePath: string;
+  public title: string;
+  public tags: string[];
+  public aliases: string[];
+  public created: string;
+  public modified: string;
+  public links: string[];
+  public backlinks: string[];
+  public body: string;
+  public metadata: WikiDocumentMetadata;
+
+  constructor(filePath: string, content: string = '') {
+    this.filePath = filePath;
+    const { data, content: body } = matter(content);
+    
+    this.title = data.title || path.basename(filePath, '.md');
+    this.tags = data.tags || [];
+    this.aliases = data.aliases || [];
+    this.created = data.created || new Date().toISOString();
+    this.modified = data.modified || new Date().toISOString();
+    this.links = this._extractLinks(body);
+    this.backlinks = [];
+    this.body = body;
+    
+    this.metadata = {
+      title: this.title,
+      type: data.type || 'note',
+      tags: this.tags,
+      created: this.created,
+      modified: this.modified,
+      source: data.source || 'manual',
+      linked: data.linked || [],
+      ...data,
+    };
+  }
+
+  private _extractLinks(markdown: string): string[] {
+    // Extract [[wiki links]] and [markdown links](url)
+    const wikiLinks = (markdown.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g) || [])
+      .map(l => l.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/, '$1'));
+    
+    const mdLinks = (markdown.match(/\[([^\]]+)\]\(([^)]+)\)/g) || [])
+      .map(l => {
+        const m = l.match(/\[([^\]]+)\]\(([^)]+)\)/);
+        return m ? m[2] : '';
+      })
+      .filter(l => !l.startsWith('http'));
+    
+    return [...new Set([...wikiLinks, ...mdLinks])];
+  }
+
+  toMarkdown(): string {
+    const frontmatter = [
+      '---',
+      `title: "${this.title}"`,
+      `created: ${this.created}`,
+      `modified: ${new Date().toISOString()}`,
+      this.tags.length ? `tags: [${this.tags.map(t => `"${t}"`).join(', ')}]` : '',
+      this.aliases.length ? `aliases: [${this.aliases.map(a => `"${a}"`).join(', ')}]` : '',
+      `source: ${this.metadata.source || 'manual'}`,
+      this.metadata.type ? `type: ${this.metadata.type}` : '',
+      this.metadata.linked && this.metadata.linked.length ? `linked: [${this.metadata.linked.map(l => `"${l}"`).join(', ')}]` : '',
+      '---',
+      '',
+    ].filter(Boolean).join('\n');
+    
+    return frontmatter + this.body;
+  }
+
+  updateMetadata(metadata: Partial<WikiDocumentMetadata>): void {
+    this.metadata = { ...this.metadata, ...metadata };
+    this.title = this.metadata.title || this.title;
+    this.tags = this.metadata.tags || this.tags;
+    this.modified = new Date().toISOString();
+  }
+}

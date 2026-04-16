@@ -14,6 +14,7 @@ export default function ConfigPage() {
     { key: 'projectRoot', label: '项目根目录', type: 'dir' },
     { key: 'rawSourcesDir', label: '原始文档目录', type: 'text', default: 'raw_sources' },
     { key: 'wikiDir', label: 'Wiki 目录', type: 'text', default: 'wiki' },
+    { key: 'port', label: '服务端口', type: 'number', default: '3001' },
   ];
 
   const llmFields = [
@@ -35,10 +36,10 @@ export default function ConfigPage() {
             <div className="flex gap-8">
               <input
                 className="input"
-                type="text"
+                type={f.type === 'number' ? 'number' : 'text'}
                 value={config[f.key] || ''}
                 placeholder={f.default}
-                onChange={e => setConfig(f.key, e.target.value)}
+                onChange={e => setConfig(f.key, f.type === 'number' ? parseInt(e.target.value) : e.target.value)}
                 style={{ flex: 1 }}
               />
               {f.type === 'dir' && (
@@ -99,7 +100,7 @@ export default function ConfigPage() {
 
         <div className="mt-16">
           <button className="btn btn-primary" onClick={async () => {
-            const url = config.llmBackend === 'ollama' 
+            const url = config.llmBackend === 'ollama'
               ? (config.ollamaUrl || 'http://localhost:11434')
               : (config.lmStudioUrl || 'http://localhost:1234');
             try {

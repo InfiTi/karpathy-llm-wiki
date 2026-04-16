@@ -12,11 +12,11 @@ async function build() {
 
   await esbuild.build({
     entryPoints: [
-      path.join(__dirname, '..', 'src', 'core', 'llm', 'client.js'),
-      path.join(__dirname, '..', 'src', 'core', 'wiki', 'index.js'),
-      path.join(__dirname, '..', 'src', 'core', 'ingest', 'index.js'),
-      path.join(__dirname, '..', 'src', 'core', 'query', 'index.js'),
-      path.join(__dirname, '..', 'src', 'core', 'lint', 'index.js'),
+      path.join(__dirname, '..', 'src', 'core', 'llm', 'client.ts'),
+      path.join(__dirname, '..', 'src', 'core', 'wiki', 'index.ts'),
+      path.join(__dirname, '..', 'src', 'core', 'ingest', 'index.ts'),
+      path.join(__dirname, '..', 'src', 'core', 'query', 'index.ts'),
+      path.join(__dirname, '..', 'src', 'core', 'lint', 'index.ts'),
     ],
     bundle: true,
     platform: 'node',
@@ -27,6 +27,9 @@ async function build() {
     sourcemap: false,
     minify: false,
     logLevel: 'info',
+    loader: {
+      '.ts': 'ts'
+    }
   });
 
   console.log('[build-core] ✓ Core modules bundled to dist/core/');

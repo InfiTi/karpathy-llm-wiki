@@ -9,16 +9,21 @@ import IngestPage from './pages/IngestPage';
 import QueryPage from './pages/QueryPage';
 import LintPage from './pages/LintPage';
 import ConfigPage from './pages/ConfigPage';
-import DebugPage from './pages/DebugPage';
 
-const NAV_ITEMS = [
+interface NavItem {
+  path: string;
+  icon: string;
+  label: string;
+  desc?: string;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { path: '/', icon: '🏠', label: '概览' },
   { path: '/setup', icon: '⚙️', label: '项目初始化' },
   { path: '/ingest', icon: '📥', label: 'Ingest', desc: '摄入原始文档' },
   { path: '/query', icon: '🔍', label: 'Query', desc: '查询知识库' },
   { path: '/lint', icon: '✅', label: 'Lint', desc: '质量检查' },
   { path: '/config', icon: '🔧', label: '配置' },
-  { path: '/debug', icon: '🐛', label: '调试', desc: '查看后台输出' },
 ];
 
 export default function App() {
@@ -74,7 +79,7 @@ export default function App() {
                   AI 后端
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {config.llmBackend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
+                  {config.llm?.backend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
                 </div>
               </div>
             </div>
@@ -89,7 +94,6 @@ export default function App() {
               <Route path="/query" element={<QueryPage />} />
               <Route path="/lint" element={<LintPage />} />
               <Route path="/config" element={<ConfigPage />} />
-              <Route path="/debug" element={<DebugPage />} />
             </Routes>
           </main>
         </div>
@@ -104,7 +108,7 @@ function StatusIndicator() {
   const checkBackend = async () => {
     if (!window.electronAPI) return 'no-api';
     try {
-      const res = await fetch(`${config.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${config.llm?.url || 'http://localhost:11434'}/api/tags`, { signal: AbortSignal.timeout(3000) });
       return res.ok ? 'online' : 'offline';
     } catch {
       return 'offline';

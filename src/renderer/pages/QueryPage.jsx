@@ -41,8 +41,9 @@ export default function QueryPage() {
 
         // Get related questions
         try {
-          const questions = await window.electronAPI.queryGetRelatedQuestions(query);
-          setRelatedQuestions(questions);
+          // 暂时注释掉获取相关问题的功能，因为该API尚未实现
+          // const questions = await window.electronAPI.queryGetRelatedQuestions(query);
+          // setRelatedQuestions(questions);
         } catch (err) {
           addLog('error', `获取相关问题失败: ${err.message}`);
         }
@@ -87,7 +88,7 @@ export default function QueryPage() {
       setLoading(true);
       addLog('info', '获取话题推荐...');
 
-      const recs = await window.electronAPI.queryGetCombinedRecommendations(query);
+      const recs = await window.electronAPI.queryGetTopicRecommendations(query, '');
       setRecommendations(recs);
       setShowRecommendations(true);
       addLog('success', `获取到 ${recs.length} 个话题推荐`);

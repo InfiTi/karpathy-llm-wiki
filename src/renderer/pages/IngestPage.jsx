@@ -9,6 +9,7 @@ export default function IngestPage() {
   const [currentFile, setCurrentFile] = useState('');
   const [results, setResults] = useState([]);
   const [abortRef] = useState({ current: false });
+  const [url, setUrl] = useState('');
 
   // Subscribe to progress events from main process
   useEffect(() => {
@@ -52,6 +53,33 @@ export default function IngestPage() {
   };
 
   const removeFile = (path) => setFiles(prev => prev.filter(f => f.path !== path));
+
+  const ingestUrl = async () => {
+    if (!url || !config.projectRoot) return;
+    setRunning(true);
+    abortRef.current = false;
+    setResults([]);
+    addLog('info', `开始 Ingest 网页: ${url}`);
+
+    try {
+      const result = await window.electronAPI.ingestProcessUrl(url);
+      const successCount = result.success ? 1 : 0;
+      setResults([{
+        name: result.title || url.split('/').pop() || '网页内容',
+        status: result.success ? 'success' : 'error',
+        message: result.success ? '处理完成' : result.error,
+        path: result.savedPath,
+      }]);
+      addLog(successCount === 1 ? 'success' : 'warning',
+        `✅ 网页 Ingest 完成！${successCount}/1 成功`);
+    } catch (err) {
+      addLog('error', `网页 Ingest 失败: ${err.message}`);
+    }
+
+    setProgress(100);
+    setRunning(false);
+    setUrl('');
+  };
 
   const runIngest = async () => {
     if (!files.length || !config.projectRoot) return;
@@ -99,6 +127,34 @@ export default function IngestPage() {
           {files.length > 0 && (
             <button className="btn btn-danger" onClick={() => setFiles([])}>🗑 清空</button>
           )}
+        </div>
+
+        {/* URL Input */}
+        <div className="mb-16">
+          <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-muted)' }}>或粘贴网页链接</div>
+          <div className="flex gap-8">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                fontSize: 13,
+                fontFamily: 'var(--font-mono)'
+              }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={ingestUrl}
+              disabled={!url || !config.projectRoot || running}
+            >
+              🔗 摄入网页
+            </button>
+          </div>
         </div>
 
         {files.length > 0 ? (
