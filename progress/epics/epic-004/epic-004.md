@@ -17,23 +17,33 @@
 
 ## 任务
 
-### Task-012: 技术栈迁移方案设计
-- 分析 Python 版本的核心功能
-- 设计 JavaScript/TypeScript 迁移方案
-- 制定详细的迁移计划
+### Task-012: Python 版本核心功能分析
+- 分析 Python 版本的核心模块和功能实现
+- 识别关键依赖和技术栈
+- 生成详细的功能分析报告
 
-### Task-013: 核心功能迁移
+### Task-013: TypeScript 迁移方案设计
+- 设计 TypeScript 代码结构和架构
+- 选择合适的技术栈和库
+- 生成详细的迁移方案文档
+
+### Task-014: 迁移计划制定
+- 制定详细的迁移步骤和时间表
+- 确定优先级和风险评估
+- 生成完整的迁移计划文档
+
+### Task-015: 核心功能迁移
 - 将 Python 版本的 Ingest 功能迁移到 TypeScript
 - 将 Python 版本的 Query 功能迁移到 TypeScript
 - 将 Python 版本的 Lint 功能迁移到 TypeScript
 - 实现 LLM 客户端的 TypeScript 版本
 
-### Task-014: 功能测试与优化
+### Task-016: 功能测试与优化
 - 确保所有迁移的功能正常工作
 - 进行性能测试和用户体验测试
 - 优化 TypeScript 代码质量和性能
 
-### Task-015: TypeScript 升级与发布
+### Task-017: TypeScript 升级与发布
 - 将 JavaScript 代码升级到 TypeScript
 - 优化安装包大小
 - 实现自动更新机制
