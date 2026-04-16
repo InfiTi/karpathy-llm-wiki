@@ -24,7 +24,23 @@ export default function SetupPage() {
         await window.electronAPI.ensureDir(config.projectRoot + '\\' + d);
       }
       // Create README
-      const readme = `# ${config.projectRoot.split('\\').pop()} - LLM Wiki\n\n项目初始化完成。\n\n## 目录结构\n\n- `raw/` - 存放原始文档\n- `wiki/` - 生成的维基文档\n- `logs/` - 运行日志\n\n## 三层架构\n\n1. **Ingest** - 摄入原始文档\n2. **Query** - 查询知识库\n3. **Lint** - 质量检查\n`;
+      const readme = [
+        '# ' + config.projectRoot.split('\\').pop() + ' - LLM Wiki',
+        '',
+        '项目初始化完成。',
+        '',
+        '## 目录结构',
+        '',
+        '- `raw/` - 存放原始文档',
+        '- `wiki/` - 生成的维基文档',
+        '- `logs/` - 运行日志',
+        '',
+        '## 三层架构',
+        '',
+        '1. **Ingest** - 摄入原始文档',
+        '2. **Query** - 查询知识库',
+        '3. **Lint** - 质量检查',
+      ].join('\n');
       await window.electronAPI.writeFile(config.projectRoot + '\\README.md', readme);
       addLog('success', '✅ 项目初始化完成！');
       setStep(3);
@@ -58,7 +74,7 @@ export default function SetupPage() {
       {/* Progress Steps */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 32 }}>
         {[1, 2, 3].map(s => (
-          <div key={s} style={{ 
+          <div key={s} style={{
             flex: 1, height: 4, borderRadius: 2,
             background: s <= step ? 'var(--accent-blue)' : 'var(--bg-tertiary)'
           }} />
@@ -132,23 +148,23 @@ export default function SetupPage() {
             <div className="card-desc" style={{ marginBottom: 16 }}>
               确认配置后，点击「创建项目」初始化目录结构。
             </div>
-            <div style={{ 
-              background: 'var(--bg-primary)', 
-              borderRadius: 8, 
-              padding: '12px 16px', 
-              fontFamily: 'var(--font-mono)', 
+            <div style={{
+              background: 'var(--bg-primary)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              fontFamily: 'var(--font-mono)',
               fontSize: 12,
               color: 'var(--text-secondary)',
               marginBottom: 16
             }}>
-              {config.projectRoot || '...'}/<br/>
-              &nbsp;&nbsp;├── raw_sources/<br/>
-              &nbsp;&nbsp;├── wiki/<br/>
-              &nbsp;&nbsp;│&nbsp;&nbsp;└── .index/<br/>
+              {config.projectRoot || '...'}/<br />
+              &nbsp;&nbsp;├── raw_sources/<br />
+              &nbsp;&nbsp;├── wiki/<br />
+              &nbsp;&nbsp;│&nbsp;&nbsp;└── .index/<br />
               &nbsp;&nbsp;└── logs/
             </div>
-            <button 
-              className="btn btn-success" 
+            <button
+              className="btn btn-success"
               onClick={createProject}
               disabled={!config.projectRoot || creating}
             >
