@@ -35,7 +35,7 @@ export default function QueryPage() {
           context: result.context || '',
           quality_score: result.quality_score || 0,
           suggest_save: result.suggest_save || false,
-          derived_from: result.derived_from || [],
+          derivedFrom: result.derivedFrom || [],
           original_question: query,
         });
         addLog('success', '查询完成');
@@ -62,7 +62,7 @@ export default function QueryPage() {
         answer: answer.text,
         title: answer.original_question,
         tags: ['query-generated'],
-        derived_from: answer.derived_from,
+        derivedFrom: answer.derivedFrom,
       });
 
       addLog('success', `已保存到 Wiki: ${result.saved_to_wiki}`);
@@ -317,10 +317,10 @@ export default function QueryPage() {
               ))}
             </div>
           )}
-          {answer.derived_from?.length > 0 && (
+          {answer.derivedFrom?.length > 0 && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>来源条目</div>
-              {answer.derived_from.map((s, i) => (
+              {answer.derivedFrom.map((s, i) => (
                 <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 2 }}>📄 {s}</div>
               ))}
             </div>
