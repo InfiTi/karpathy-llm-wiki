@@ -46,8 +46,9 @@
 - 安装包优化
 - 自动更新机制
 - **技术栈整合**：
-  - 将 Electron 版本的现代化界面与 Python 版本的稳定功能整合
-  - 统一技术栈，提高代码可维护性
+  - 从 Python 转移到 JavaScript/TypeScript
+  - 将 Python 版本的核心功能迁移到 Electron + TypeScript
+  - 统一技术栈为 JavaScript/TypeScript，提高代码可维护性
   - 优化性能和用户体验
 
 ## 技术债务
