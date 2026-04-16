@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { LLMClient } from '@/core/llm';
 import { WikiManager } from '@/core/wiki';
 import { ProjectConfig, IngestResult } from '@/types';
@@ -98,85 +99,125 @@ export class IngestPipeline {
     return { title, text };
   }
 
-  /** Extract title and main content from HTML */
+  /** Extract title and main content from HTML using cheerio */
   private extractTextFromHtml(html: string, baseUrl: string): { title: string; text: string } {
+    const $ = cheerio.load(html);
+
     // Extract title
-    let title = '';
-    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]*)"[^>]*>/i) ||
-      html.match(/<meta[^>]*content="([^"]*)"[^>]*property="og:title"[^>]*>/i);
-    if (titleMatch) {
-      title = this.decodeHtmlEntities(titleMatch[1]);
-    } else {
-      const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
-      if (h1Match) {
-        title = this.decodeHtmlEntities(h1Match[1]);
-      }
+    let title = $('meta[property="og:title"]').attr('content') || '';
+    if (!title) {
+      title = $('h1').first().text().trim();
+    }
+    if (!title) {
+      title = $('title').text().trim();
     }
 
-    // Extract main content - remove scripts, styles, etc.
-    let text = '';
+    // Remove unwanted elements
+    $('script, style, nav, header, footer, aside, iframe, noscript, svg, [class*="comment"], [class*="sidebar"], [class*="advertisement"], [class*="ad-"]').remove();
 
-    // Try to find main content area
-    const contentPatterns = [
-      /<article[^>]*>([\s\S]*?)<\/article>/i,
-      /<div[^>]*class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-      /<div[^>]*class="[^"]*article[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-      /<div[^>]*class="[^"]*main[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    // Try to find main content area - common selectors for various sites
+    let contentText = '';
+
+    // For WeChat articles
+    if (baseUrl.includes('mp.weixin.qq.com')) {
+      contentText = this.extractWeChatContent($);
+    }
+
+    // For general websites, try common content containers
+    if (!contentText || contentText.length < 100) {
+      contentText = this.extractGeneralContent($);
+    }
+
+    return { title: this.decodeHtmlEntities(title), text: contentText.trim() };
+  }
+
+  /** Extract WeChat article content */
+  private extractWeChatContent($: cheerio.CheerioAPI): string {
+    // WeChat specific selectors
+    const selectors = [
+      '#js_content',
+      '.article-content',
+      '.rich_media_content',
+      '[id="js_content"]',
+      '.weui-article',
     ];
 
-    let mainContent = '';
-    for (const pattern of contentPatterns) {
-      const match = html.match(pattern);
-      if (match && match[1].length > mainContent.length) {
-        mainContent = match[1];
+    for (const sel of selectors) {
+      const el = $(sel);
+      if (el.length) {
+        const text = this.extractTextFromElement($, el);
+        if (text.length > 100) {
+          return text;
+        }
       }
     }
 
-    // If no specific content area found, use body
-    if (!mainContent) {
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      mainContent = bodyMatch ? bodyMatch[1] : html;
+    return '';
+  }
+
+  /** Extract content from general websites */
+  private extractGeneralContent($: cheerio.CheerioAPI): string {
+    const selectors = [
+      'article',
+      '[role="main"]',
+      'main',
+      '.content',
+      '.article',
+      '.post',
+      '.entry-content',
+      '.post-content',
+      '.article-content',
+      '.story-body',
+    ];
+
+    for (const sel of selectors) {
+      const el = $(sel);
+      if (el.length) {
+        const text = this.extractTextFromElement($, el);
+        if (text.length > 100) {
+          return text;
+        }
+      }
     }
 
-    // Remove unwanted tags
-    mainContent = mainContent
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-      .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '')
-      .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '')
-      .replace(/<!--[\s\S]*?-->/g, '');
-
-    // Extract text from paragraphs
-    const paragraphRegex = /<p[^>]*>([^<]*)<\/p>/gi;
+    // Fallback: get all paragraph text
     const paragraphs: string[] = [];
-    let match;
-    while ((match = paragraphRegex.exec(mainContent)) !== null) {
-      const text = match[1].trim();
-      if (text.length > 20) {
+    $('p').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 30) {
         paragraphs.push(text);
       }
-    }
+    });
 
-    // If no paragraphs found, extract all text
-    if (paragraphs.length === 0) {
-      text = mainContent
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    } else {
-      text = paragraphs.map(p => this.decodeHtmlEntities(p)).join('\n\n');
-    }
+    return paragraphs.join('\n\n');
+  }
 
-    // Clean up text
-    text = text
-      .replace(/[\r\n]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+  /** Extract text from a cheerio element */
+  private extractTextFromElement($: cheerio.CheerioAPI, el: cheerio.CheerioElement): string {
+    const texts: string[] = [];
 
-    return { title, text };
+    // Get direct text from element and its children
+    const processNode = (node: cheerio.Node) => {
+      if (node.type === 'text') {
+        const text = (node as cheerio.TextNode).data.trim();
+        if (text) texts.push(text);
+      } else if (node.type === 'tag') {
+        const tagName = (node as cheerio.Element).tagName.toLowerCase();
+        if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote'].includes(tagName)) {
+          texts.push('\n');
+        }
+        const children = (node as cheerio.Element).children;
+        if (children) {
+          children.forEach(processNode);
+        }
+      }
+    };
+
+    const element = $(el);
+    const children = element.contents();
+    children.each((_, node) => processNode(node));
+
+    return texts.join(' ').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   /** Decode HTML entities */
