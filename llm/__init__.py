@@ -293,7 +293,13 @@ source: "{source_url or '本地文件'}"
                     return json.loads(m.group())
                 except Exception:
                     pass
-        raise ValueError(f"LLM 返回无法解析为 JSON: {raw[:200]}")
+        # 如果无法解析为 JSON，返回默认结构
+        return {
+            "answer": raw,
+            "quality_score": 5,
+            "suggest_save": False,
+            "derived_from": []
+        }
 
     # ------------------------------------------------------------------ #
     # Lint

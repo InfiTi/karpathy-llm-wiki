@@ -1,8 +1,10 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-const Store = require('electron-store');
 const { spawn } = require('child_process');
+
+// Set userData to project directory to avoid AppData access
+app.setPath('userData', path.join(__dirname, '..', '..', '.electron-data'));
 
 // ============================================================================
 // Core Modules (loaded after app ready)
@@ -22,33 +24,46 @@ async function loadCoreModules() {
 
 function getConfig() {
   return {
-    projectRoot: store.get('projectRoot'),
-    obsidianVault: store.get('obsidianVault'),
-    llmBackend: store.get('llmBackend'),
-    ollamaUrl: store.get('ollamaUrl'),
-    lmStudioUrl: store.get('lmStudioUrl'),
-    defaultModel: store.get('defaultModel'),
-    rawSourcesDir: store.get('rawSourcesDir'),
-    wikiDir: store.get('wikiDir'),
+    ...configData,
   };
 }
 
 // ============================================================================
-// Electron Store
+// Configuration
 // ============================================================================
-const store = new Store({
-  name: 'karpathy-llm-wiki-config',
-  defaults: {
-    projectRoot: '',
-    obsidianVault: '',
-    llmBackend: 'ollama',
-    ollamaUrl: 'http://localhost:11434',
-    lmStudioUrl: 'http://localhost:1234',
-    defaultModel: 'qwen3.5:latest',
-    rawSourcesDir: 'raw_sources',
-    wikiDir: 'wiki',
+let configData = {
+  projectRoot: '',
+  obsidianVault: '',
+  llmBackend: 'ollama',
+  ollamaUrl: 'http://localhost:11434',
+  lmStudioUrl: 'http://localhost:1234',
+  defaultModel: 'qwen3.5:latest',
+  rawSourcesDir: 'raw_sources',
+  wikiDir: 'wiki',
+};
+
+const configPath = path.join(__dirname, '..', '..', 'config.json');
+
+// Load config from file
+function loadConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const data = fs.readFileSync(configPath, 'utf8');
+      configData = { ...configData, ...JSON.parse(data) };
+    }
+  } catch (err) {
+    console.error('Error loading config:', err.message);
   }
-});
+}
+
+// Save config to file
+function saveConfig() {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
+  } catch (err) {
+    console.error('Error saving config:', err.message);
+  }
+}
 
 let mainWindow;
 
@@ -58,13 +73,19 @@ let mainWindow;
 async function buildCore() {
   return new Promise((resolve, reject) => {
     const script = path.join(__dirname, '..', '..', 'scripts', 'build-core.js');
+    console.log('[buildCore] Starting build-core script:', script);
     const child = spawn(process.execPath, [script], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
+    let stdout = '';
     let stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
     child.stderr.on('data', d => stderr += d.toString());
     child.on('close', code => {
+      console.log('[buildCore] build-core script exited with code:', code);
+      console.log('[buildCore] stdout:', stdout);
+      console.log('[buildCore] stderr:', stderr);
       if (code === 0) resolve();
       else reject(new Error(`build-core failed: ${stderr}`));
     });
@@ -164,9 +185,13 @@ ipcMain.handle('fs:stat', async (event, targetPath) => {
 // ============================================================================
 // IPC Handlers - Config
 // ============================================================================
-ipcMain.handle('config:get', (event, key) => store.get(key));
-ipcMain.handle('config:set', (event, key, value) => { store.set(key, value); return true; });
-ipcMain.handle('config:getAll', () => store.store);
+ipcMain.handle('config:get', (event, key) => configData[key]);
+ipcMain.handle('config:set', (event, key, value) => {
+  configData[key] = value;
+  saveConfig();
+  return true;
+});
+ipcMain.handle('config:getAll', () => configData);
 
 // ============================================================================
 // IPC Handlers - Wiki Manager
@@ -257,6 +282,48 @@ ipcMain.handle('query:search', async (event, query, limit) => {
   } catch (err) { throw new Error(err.message); }
 });
 
+ipcMain.handle('query:saveToWiki', async (event, question, answerData) => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.saveToWiki(question, answerData);
+  } catch (err) { throw new Error(err.message); }
+});
+
+ipcMain.handle('query:getTopicRecommendations', async () => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.getTopicRecommendations();
+  } catch (err) { throw new Error(err.message); }
+});
+
+ipcMain.handle('query:getRelatedQuestions', async (event, query) => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.getRelatedQuestions(query);
+  } catch (err) { throw new Error(err.message); }
+});
+
+ipcMain.handle('query:getRelatedQuestionsForDocument', async (event, title) => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.getRelatedQuestionsForDocument(title);
+  } catch (err) { throw new Error(err.message); }
+});
+
+ipcMain.handle('query:getKnowledgeExploration', async () => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.getKnowledgeExploration();
+  } catch (err) { throw new Error(err.message); }
+});
+
+ipcMain.handle('query:getCombinedRecommendations', async (event, query) => {
+  try {
+    const engine = new coreModules.QueryEngine(getConfig());
+    return await engine.getCombinedRecommendations(query);
+  } catch (err) { throw new Error(err.message); }
+});
+
 // ============================================================================
 // IPC Handlers - Lint Engine
 // ============================================================================
@@ -318,7 +385,11 @@ ipcMain.handle('shell:openPath', (event, filePath) => shell.openPath(filePath));
 app.whenReady().then(async () => {
   console.log('[Karpathy LLM Wiki] Starting up...');
   try {
-    await buildCore();
+    // 加载配置
+    loadConfig();
+
+    // 跳过 buildCore，因为在 npm run dev 中已经运行过了
+    // await buildCore();
     await loadCoreModules();
     createWindow();
     console.log('[Karpathy LLM Wiki] Main process ready');

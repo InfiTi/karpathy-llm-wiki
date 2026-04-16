@@ -36,6 +36,7 @@ outputs/ ← AI 生成的回答（可回填 wiki/）
 |------|------|------|------|
 | [epic-001](epics/epic-001/epic-001.md) | 核心功能实现 | 100% | #completed |
 | [epic-002](epics/epic-002/epic-002.md) | 质量保证体系 | 100% | #completed |
+| [epic-003](epics/epic-003/epic-003.md) | Query 增强 | 0% | #in-progress |
 
 ## 快速导航
 
@@ -43,9 +44,11 @@ outputs/ ← AI 生成的回答（可回填 wiki/）
 - 史诗列表：
   - [epic-001 核心功能](epics/epic-001/epic-001.md)
   - [epic-002 质量保证](epics/epic-002/epic-002.md)
+  - [epic-003 Query 增强](epics/epic-003/epic-003.md)
 - 决策记录：
   - [adr-001 Markdown进度管理](decisions/adr-001.md)
   - [adr-002 前端框架选型](decisions/adr-002.md)
 - 执行日志：
   - [2026-04-16 初始化](logs/2026-04-16-init.md)
   - [2026-04-16 清理知识图谱](logs/2026-04-16-cleanup.md)
+  - [2026-04-16 v0.3.0 规划](logs/2026-04-16-v030-plan.md)

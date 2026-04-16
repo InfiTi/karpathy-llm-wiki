@@ -3,7 +3,7 @@ import os, re, datetime
 from pathlib import Path
 
 
-def run_query(question, vault_path, llm_client, cfg=None):
+def run_query(question, vault_path, llm_client, cfg=None, save_to_wiki=False):
     vault = Path(vault_path)
 
     # 确保三个目录存在
@@ -30,6 +30,11 @@ def run_query(question, vault_path, llm_client, cfg=None):
         }
     answer = llm_client.query(question, context, prompts=prompts)
 
+    # 添加质量评估和来源信息
+    answer["quality_score"] = answer.get("quality_score", 0)
+    answer["suggest_save"] = answer.get("suggest_save", False)
+    answer["derived_from"] = answer.get("derived_from", [r["title"] for r in results[:3]])
+
     # 5. 保存回答到 outputs/
     answer_text = answer.get("answer", "")
     if answer_text:
@@ -41,6 +46,9 @@ def run_query(question, vault_path, llm_client, cfg=None):
             f'question: "{question}"',
             f"sources: [{','.join(answer.get('sources', []))}]",
             f"confidence: {answer.get('confidence', 'unknown')}",
+            f"quality_score: {answer.get('quality_score', 0)}",
+            f"suggest_save: {answer.get('suggest_save', False)}",
+            f"derived_from: [{','.join(answer.get('derived_from', []))}]",
             f"created: {datetime.datetime.now().isoformat()}",
             "---",
             "",
@@ -54,6 +62,11 @@ def run_query(question, vault_path, llm_client, cfg=None):
     backfill = answer.get("backfill")
     if backfill:
         _write_backfill(wiki_dir, backfill)
+
+    # 7. 保存到 Wiki（如果请求）
+    if save_to_wiki:
+        wiki_path = _write_query_to_wiki(wiki_dir, question, answer, answer.get("derived_from", []))
+        answer["saved_to_wiki"] = wiki_path
 
     return answer
 
@@ -135,7 +148,7 @@ def _build_context(results, max_tokens=4000):
 
 def _write_backfill(wiki_dir, backfill):
     title = backfill.get("title", "untitled")
-    slug = re.sub(r"[/\\:*?<>|]", "-", title.strip())[:60]
+    slug = re.sub(r'[\\/:*?<>|"\']', "-", title.strip())[:60]
     path = wiki_dir / f"{slug}.md"
     tags = backfill.get("tags", [])
     lines = [
@@ -157,6 +170,42 @@ def _write_backfill(wiki_dir, backfill):
         for pt in backfill["key_points"]:
             lines.append(f"- {pt}")
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_query_to_wiki(wiki_dir, question, answer, derived_from):
+    """保存 Query 答案到 Wiki"""
+    # 从答案中提取标题
+    title = answer.get("title", question[:60])
+    slug = re.sub(r'[\\/:*?<>|"\']', "-", title.strip())[:60]
+    path = wiki_dir / f"{slug}.md"
+    
+    # 提取标签（从答案或来源中）
+    tags = answer.get("tags", ["query-generated"])
+    
+    # 构建内容
+    lines = [
+        "---",
+        f'title: "{title}"',
+        f"created: {datetime.datetime.now().isoformat()}",
+        "tags:",
+    ]
+    for tag in tags:
+        lines.append(f"  - {tag}")
+    lines.append("source: query-generated")
+    lines.append(f"original_question: \"{question}\"")
+    lines.append(f"derived_from: [{','.join(derived_from)}]")
+    lines.append("---")
+    lines.append("")
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append("## 原始问题")
+    lines.append(question)
+    lines.append("")
+    lines.append("## 答案")
+    lines.append(answer.get("answer", ""))
+    
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return str(path)
 
 
 def _extract_keywords(text):

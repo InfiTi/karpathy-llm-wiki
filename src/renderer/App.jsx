@@ -33,7 +33,8 @@ export default function App() {
         <header className="app-header">
           <span className="logo">🧠 Karpathy LLM Wiki</span>
           <span className="subtitle">本地 AI 知识库管理系统</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>v0.1.0 · 2026-04-16 13:37:48</span>
             <StatusIndicator />
           </div>
         </header>

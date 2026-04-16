@@ -1,0 +1,10 @@
+{
+  "projectRoot": "F:\\Obsidian\\wiki Test",
+  "obsidianVault": "",
+  "llmBackend": "ollama",
+  "ollamaUrl": "http://localhost:11434",
+  "lmStudioUrl": "http://localhost:1234",
+  "defaultModel": "qwen3.5:latest",
+  "rawSourcesDir": "raw_sources",
+  "wikiDir": "wiki"
+}

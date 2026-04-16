@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Query ───────────────────────────────────────────────────────────────
   queryAsk: (question) => ipcRenderer.invoke('query:ask', question),
   querySearch: (query, limit) => ipcRenderer.invoke('query:search', query, limit),
+  querySaveToWiki: (question, answerData) => ipcRenderer.invoke('query:saveToWiki', question, answerData),
+  queryGetTopicRecommendations: () => ipcRenderer.invoke('query:getTopicRecommendations'),
+  queryGetRelatedQuestions: (query) => ipcRenderer.invoke('query:getRelatedQuestions', query),
+  queryGetRelatedQuestionsForDocument: (title) => ipcRenderer.invoke('query:getRelatedQuestionsForDocument', title),
+  queryGetKnowledgeExploration: () => ipcRenderer.invoke('query:getKnowledgeExploration'),
+  queryGetCombinedRecommendations: (query) => ipcRenderer.invoke('query:getCombinedRecommendations', query),
 
   // ── Lint ────────────────────────────────────────────────────────────────
   lintLintDocument: (filePath) => ipcRenderer.invoke('lint:lintDocument', filePath),

@@ -12,7 +12,13 @@
     "test": "jest",
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx"
   },
-  "keywords": ["llm", "wiki", "knowledge-base", "obsidian", "ollama"],
+  "keywords": [
+    "llm",
+    "wiki",
+    "knowledge-base",
+    "obsidian",
+    "ollama"
+  ],
   "author": "Karpathy LLM Wiki",
   "license": "MIT",
   "devDependencies": {
