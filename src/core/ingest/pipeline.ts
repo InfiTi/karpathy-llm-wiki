@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import iconv from 'iconv-lite';
 import { LLMClient } from '@/core/llm';
 import { WikiManager } from '@/core/wiki';
 import { ProjectConfig, IngestResult } from '@/types';
@@ -86,17 +87,72 @@ export class IngestPipeline {
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     };
 
-    const response = await axios.get(url, { headers, timeout: 20000 });
-    const html = response.data as string;
+    try {
+      const response = await axios.get(url, { headers, timeout: 20000, responseType: 'arraybuffer' });
+      const buffer = Buffer.from(response.data);
 
-    // Parse HTML to extract title and content
-    const { title, text } = this.extractTextFromHtml(html, url);
+      // Detect encoding and decode HTML
+      const html = this.decodeHtml(buffer);
 
-    if (!text || text.length < 50) {
-      throw new Error(`无法提取网页正文: ${url}`);
+      // Parse HTML to extract title and content
+      let result = this.extractTextFromHtml(html, url);
+
+      // If content is too short or looks garbled, use fallback
+      if (!result.text || result.text.length < 100) {
+        return this.createFallbackContent(url, result.title);
+      }
+
+      // Check for WeChat specifically
+      if (url.includes('mp.weixin.qq.com')) {
+        // Additional check: if content has too many unusual characters, use fallback
+        const unusualCharRatio = (result.text.length - result.text.replace(/[\u4e00-\u9fa5，。！？；：""''（）【】\s]/g, '').length) / result.text.length;
+        if (unusualCharRatio < 0.3) {
+          return this.createFallbackContent(url, result.title);
+        }
+      }
+
+      return result;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(`网页访问失败 (${error.response.status}): ${url}`);
+      }
+      throw error;
+    }
+  }
+
+  /** Decode HTML buffer with proper encoding detection */
+  private decodeHtml(buffer: Buffer): string {
+    // Try UTF-8 first
+    let html = buffer.toString('utf-8');
+
+    // Check if content looks garbled by looking for common Chinese words
+    const hasCommonWords = (text: string): boolean => {
+      const commonWords = ['我们', '公司', '家庭', '这个', '什么', '可以', '因为', '所以', '但是', '就是', '不是'];
+      return commonWords.some(word => text.includes(word));
+    };
+
+    // If no common Chinese words in UTF-8, try GBK
+    if (!hasCommonWords(html)) {
+      try {
+        const htmlGbk = iconv.decode(buffer, 'gbk');
+        if (hasCommonWords(htmlGbk)) {
+          html = htmlGbk;
+        }
+      } catch (e) {
+        // GBK decode failed, keep UTF-8
+      }
     }
 
-    return { title, text };
+    return html;
+  }
+
+  /** Create fallback content for sites that can't be scraped */
+  private createFallbackContent(url: string, title?: string): { title: string; text: string } {
+    const pageTitle = title || '网页内容';
+    return {
+      title: pageTitle,
+      text: `[此内容来自: ${url}]\n\n原文链接: ${url}\n\n注意: 该网页内容无法自动提取。\n\n建议:\n1. 复制文章链接到浏览器打开\n2. 全选复制文章内容\n3. 以文本文件方式重新摄入`,
+    };
   }
 
   /** Extract title and main content from HTML using cheerio */
