@@ -57,9 +57,14 @@ const useStore = create((set, get) => ({
   // Query State
   queryResult: null,
   queryLoading: false,
+  queryHistory: [],
 
   setQueryResult: (r) => set({ queryResult: r }),
   setQueryLoading: (l) => set({ queryLoading: l }),
+  addQueryHistory: (q) => set(state => ({
+    queryHistory: [q, ...state.queryHistory.filter(h => h !== q)].slice(0, 20)
+  })),
+  clearQueryHistory: () => set({ queryHistory: [] }),
 
   // Lint State
   lintResults: [],

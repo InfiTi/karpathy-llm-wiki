@@ -29,6 +29,7 @@ export class WikiManager {
     size: number;
     modified: Date;
     created: string;
+    content: string;
   }[]> {
     const files = await fs.readdir(this.wikiDir);
     const mdFiles = files.filter((f: string) => f.endsWith('.md'));
@@ -42,6 +43,7 @@ export class WikiManager {
       size: number;
       modified: Date;
       created: string;
+      content: string;
     }[] = [];
 
     for (const file of mdFiles) {
@@ -60,6 +62,7 @@ export class WikiManager {
         size: stat.size,
         modified: stat.mtime,
         created: doc.created,
+        content: doc.body,
       });
     }
 
@@ -122,13 +125,37 @@ export class WikiManager {
     created: string;
   }[]> {
     const docs = await this.listDocuments();
-    const q = query.toLowerCase();
+    const keywords = this.extractKeywords(query);
 
-    return docs.filter(d =>
-      d.title.toLowerCase().includes(q) ||
-      d.tags.some(t => t.toLowerCase().includes(q)) ||
-      d.aliases.some(a => a.toLowerCase().includes(q))
-    );
+    return docs.filter(d => {
+      const titleLower = d.title.toLowerCase();
+      const contentLower = d.content?.toLowerCase() || '';
+
+      return keywords.some(kw => {
+        const kwLower = kw.toLowerCase();
+        return titleLower.includes(kwLower) ||
+          d.tags.some(t => t.toLowerCase().includes(kwLower)) ||
+          d.aliases.some(a => a.toLowerCase().includes(kwLower)) ||
+          contentLower.includes(kwLower);
+      });
+    });
+  }
+
+  /** Extract keywords from query text */
+  private extractKeywords(text: string): string[] {
+    const chineseTerms = text.match(/[\u4e00-\u9fff]{2,}/g) || [];
+    const englishWords = text.match(/[a-zA-Z]{2,}/g) || [];
+    const chineseChars = text.match(/[\u4e00-\u9fff]/g) || [];
+
+    const allWords = [...chineseTerms, ...englishWords, ...chineseChars];
+
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'from', 'about', 'a', 'an', 'of', 'to', 'in', 'on', 'by',
+      'what', 'how', 'why', 'is', 'are', 'can', 'do', 'this', 'that',
+      '什么', '是', '的', '了', '在', '有', '和', '我', '他', '她', '它', '们'
+    ]);
+
+    return [...new Set(allWords.filter(w => !stopWords.has(w.toLowerCase())))];
   }
 
   /** Build knowledge graph from wiki documents */

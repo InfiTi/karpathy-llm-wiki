@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import useStore from '../store/useStore';
 
 export default function DashboardPage() {
-  const { config, addLog } = useStore();
+  const { config, setConfig, addLog } = useStore();
   const [stats, setStats] = useState({ docCount: 0, linkCount: 0 });
   const [recentDocs, setRecentDocs] = useState([]);
   const [llmStatus, setLlmStatus] = useState({ ok: false, checking: true });
@@ -13,17 +13,14 @@ export default function DashboardPage() {
   }, [config.projectRoot]);
 
   const loadDashboard = async () => {
-    // Load wiki stats
     try {
       const wikiStats = await window.electronAPI.wikiGetStats();
       setStats(wikiStats);
 
-      // Load recent docs
       const docs = await window.electronAPI.wikiListDocuments();
       setRecentDocs(docs.slice(0, 5));
-    } catch {}
+    } catch { }
 
-    // Check LLM status
     try {
       const result = await window.electronAPI.llmTest();
       setLlmStatus({ ok: result.success, checking: false, info: result });
@@ -32,11 +29,36 @@ export default function DashboardPage() {
     }
   };
 
+  const selectProjectRoot = async () => {
+    if (!window.electronAPI) return;
+    const dir = await window.electronAPI.selectDirectory();
+    if (dir) {
+      await setConfig('projectRoot', dir);
+      addLog('info', `项目目录切换为: ${dir}`);
+    }
+  };
+
   return (
     <div>
       <h1 style={{ fontSize: 24, marginBottom: 8 }}>📊 Dashboard</h1>
-      <div className="text-muted mb-24">
-        知识库概览 · {config.projectRoot ? config.projectRoot : '未设置项目目录'}
+      <div className="text-muted mb-24" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          知识库概览
+          {config.projectRoot && (
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 8 }}>
+              {config.projectRoot}
+            </span>
+          )}
+        </div>
+        {config.projectRoot && (
+          <button
+            className="btn btn-secondary"
+            onClick={selectProjectRoot}
+            style={{ fontSize: 12, padding: '4px 12px' }}
+          >
+            切换目录
+          </button>
+        )}
       </div>
 
       {/* Stats Grid */}

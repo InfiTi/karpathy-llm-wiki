@@ -73,12 +73,11 @@ export class QueryEngine {
       content: string;
     }[] = [];
 
-    for (const doc of docs.slice(0, 5)) { // Limit to top 5 documents
-      const content = await fs.readFile(doc.filePath, 'utf-8');
+    for (const doc of docs.slice(0, 5)) {
       relevantDocs.push({
         fileName: doc.fileName,
         title: doc.title,
-        content,
+        content: doc.content || '',
       });
     }
 
@@ -91,12 +90,18 @@ export class QueryEngine {
     title: string;
     content: string;
   }[]): Promise<string> {
+    if (docs.length === 0) {
+      return '（知识库为空，没有找到相关信息）';
+    }
+
     let context = '相关文档:\n\n';
 
     for (const doc of docs) {
       context += `# ${doc.title}\n`;
-      context += `${doc.content.substring(0, 1000)}...\n\n`; // Limit content length
+      context += `${doc.content.substring(0, 1000)}...\n\n`;
     }
+
+    context += `\n\n[共 ${docs.length} 个相关知识条目]`;
 
     return context;
   }

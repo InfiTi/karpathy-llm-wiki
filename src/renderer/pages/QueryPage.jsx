@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import useStore from '../store/useStore';
 
 export default function QueryPage() {
-  const { config, addLog } = useStore();
+  const { config, addLog, queryHistory, addQueryHistory, clearQueryHistory } = useStore();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState(null);
@@ -11,22 +11,23 @@ export default function QueryPage() {
   const [recommendations, setRecommendations] = useState([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [relatedQuestions, setRelatedQuestions] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const runQuery = async () => {
     if (!query.trim()) return;
     setLoading(true);
     setAnswer(null);
     setSearchResults([]);
+    setShowHistory(false);
     addLog('info', `执行查询: ${query}`);
 
     try {
       if (searchMode === 'search') {
-        // Wiki document search
         const results = await window.electronAPI.wikiSearchDocuments(query);
         setSearchResults(results);
         addLog('success', `搜索到 ${results.length} 条相关文档`);
       } else {
-        // AI Q&A with wiki context
+        addQueryHistory(query);
         const result = await window.electronAPI.queryAsk(query);
         setAnswer({
           text: result.answer || '（未返回答案）',
@@ -38,15 +39,6 @@ export default function QueryPage() {
           original_question: query,
         });
         addLog('success', '查询完成');
-
-        // Get related questions
-        try {
-          // 暂时注释掉获取相关问题的功能，因为该API尚未实现
-          // const questions = await window.electronAPI.queryGetRelatedQuestions(query);
-          // setRelatedQuestions(questions);
-        } catch (err) {
-          addLog('error', `获取相关问题失败: ${err.message}`);
-        }
       }
     } catch (err) {
       addLog('error', `查询失败: ${err.message}`);
@@ -137,6 +129,13 @@ export default function QueryPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               className="btn btn-secondary"
+              onClick={() => setShowHistory(!showHistory)}
+              style={{ fontSize: 12, padding: '4px 12px' }}
+            >
+              📜 历史 {queryHistory.length > 0 && `(${queryHistory.length})`}
+            </button>
+            <button
+              className="btn btn-secondary"
               onClick={getTopicRecommendations}
               disabled={loading}
               style={{ fontSize: 12, padding: '4px 12px' }}
@@ -154,6 +153,43 @@ export default function QueryPage() {
           </div>
         </div>
       </div>
+
+      {/* Search History */}
+      {showHistory && queryHistory.length > 0 && (
+        <div className="card mt-16 fade-in">
+          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>📜 查询历史</div>
+            <button
+              className="btn btn-secondary"
+              onClick={clearQueryHistory}
+              style={{ fontSize: 11, padding: '2px 8px' }}
+            >
+              清空
+            </button>
+          </div>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {queryHistory.map((q, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: 13,
+                }}
+                onClick={() => {
+                  setQuery(q);
+                  setShowHistory(false);
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--background-secondary)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                {q}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search Results */}
       {searchResults.length > 0 && (
