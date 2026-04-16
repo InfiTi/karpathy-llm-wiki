@@ -242,6 +242,10 @@ ipcMain.handle('config:set', (_event: IpcMainInvokeEvent, key: string, value: an
 });
 ipcMain.handle('config:getAll', () => configData);
 
+ipcMain.handle('getLastModified', () => {
+  return new Date().toLocaleString();
+});
+
 // ============================================================================
 // IPC Handlers - Wiki Manager
 // ============================================================================
@@ -251,6 +255,9 @@ ipcMain.handle('wiki:initialize', async () => {
     if (!coreModules.WikiManager) throw new Error('WikiManager 模块未加载');
     const wiki = new coreModules.WikiManager(config.projectRoot || '');
     await wiki.initialize();
+    // 确保 raw 目录也存在
+    const rawDir = path.join(config.projectRoot || '', 'raw');
+    await fs.ensureDir(rawDir);
     return { success: true };
   } catch (err: any) { return { success: false, error: err.message }; }
 });

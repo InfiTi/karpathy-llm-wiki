@@ -28,6 +28,20 @@ export default function App() {
     loadConfig();
   }, []);
 
+  const [lastModified, setLastModified] = useState(new Date().toLocaleString());
+
+  useEffect(() => {
+    // 尝试获取最后构建时间或文件修改时间
+    if (window.electronAPI) {
+      window.electronAPI.getLastModified().then(date => {
+        if (date) setLastModified(date);
+      }).catch(() => {
+        // 如果失败，使用当前时间
+        setLastModified(new Date().toLocaleString());
+      });
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <div className="app-shell">
@@ -36,7 +50,7 @@ export default function App() {
           <span className="logo">🧠 Karpathy LLM Wiki</span>
           <span className="subtitle">本地 AI 知识库管理系统</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>v0.1.0 · 2026-04-16 13:37:48</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>v0.1.0 · {lastModified}</span>
             <StatusIndicator />
           </div>
         </header>

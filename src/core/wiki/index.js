@@ -53,7 +53,7 @@ export class WikiDocument {
 export class WikiManager {
   constructor(projectRoot) {
     this.projectRoot = projectRoot;
-    this.rawDir = path.join(projectRoot, 'raw_sources');
+    this.rawDir = path.join(projectRoot, 'raw');
     this.wikiDir = path.join(projectRoot, 'wiki');
   }
 

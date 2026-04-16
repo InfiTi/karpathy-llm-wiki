@@ -19,12 +19,12 @@ export default function SetupPage() {
     if (!config.projectRoot) return;
     setCreating(true);
     try {
-      const dirs = ['raw_sources', 'wiki', 'wiki/.index', 'logs'];
+      const dirs = ['raw', 'wiki', 'wiki/.index', 'logs'];
       for (const d of dirs) {
         await window.electronAPI.ensureDir(config.projectRoot + '\\' + d);
       }
       // Create README
-      const readme = `# ${config.projectRoot.split('\\').pop()} - LLM Wiki\n\n项目初始化完成。\n\n## 目录结构\n\n- \`raw_sources/\` - 存放原始文档\n- \`wiki/\` - 生成的维基文档\n- \`logs/\` - 运行日志\n\n## 三层架构\n\n1. **Ingest** - 摄入原始文档\n2. **Query** - 查询知识库\n3. **Lint** - 质量检查\n`;
+      const readme = `# ${config.projectRoot.split('\\').pop()} - LLM Wiki\n\n项目初始化完成。\n\n## 目录结构\n\n- `raw/` - 存放原始文档\n- `wiki/` - 生成的维基文档\n- `logs/` - 运行日志\n\n## 三层架构\n\n1. **Ingest** - 摄入原始文档\n2. **Query** - 查询知识库\n3. **Lint** - 质量检查\n`;
       await window.electronAPI.writeFile(config.projectRoot + '\\README.md', readme);
       addLog('success', '✅ 项目初始化完成！');
       setStep(3);

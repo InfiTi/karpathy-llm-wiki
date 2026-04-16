@@ -7,7 +7,7 @@ export class WikiManager {
   private wikiDir: string;
 
   constructor(projectRoot: string) {
-    this.rawDir = path.join(projectRoot, 'raw_sources');
+    this.rawDir = path.join(projectRoot, 'raw');
     this.wikiDir = path.join(projectRoot, 'wiki');
   }
 
@@ -112,7 +112,7 @@ export class WikiManager {
     return new WikiDocument(filePath, content);
   }
 
-  /** Search documents by title, tags, and content */
+  /** Search documents by title, tags, and content with relevance scoring */
   async searchDocuments(query: string): Promise<{
     title: string;
     filePath: string;
@@ -123,22 +123,45 @@ export class WikiManager {
     size: number;
     modified: Date;
     created: string;
+    content: string;
+    score: number;
   }[]> {
     const docs = await this.listDocuments();
     const keywords = this.extractKeywords(query);
 
-    return docs.filter(d => {
-      const titleLower = d.title.toLowerCase();
-      const contentLower = d.content?.toLowerCase() || '';
+    const scoredDocs = docs
+      .map(d => {
+        let score = 0;
+        const stem = d.fileName.toLowerCase();
+        const titleLower = d.title.toLowerCase();
+        const contentLower = d.content?.toLowerCase() || '';
 
-      return keywords.some(kw => {
-        const kwLower = kw.toLowerCase();
-        return titleLower.includes(kwLower) ||
-          d.tags.some(t => t.toLowerCase().includes(kwLower)) ||
-          d.aliases.some(a => a.toLowerCase().includes(kwLower)) ||
-          contentLower.includes(kwLower);
-      });
-    });
+        for (const kw of keywords) {
+          const kwLower = kw.toLowerCase();
+          // 文件名匹配得5分
+          if (stem.includes(kwLower)) {
+            score += 5;
+          }
+          // 标题匹配得5分
+          if (titleLower.includes(kwLower)) {
+            score += 5;
+          }
+          // 内容匹配得1分
+          if (contentLower.includes(kwLower)) {
+            score += 1;
+          }
+          // 标签匹配得2分
+          if (d.tags.some(t => t.toLowerCase().includes(kwLower))) {
+            score += 2;
+          }
+        }
+
+        return { ...d, score };
+      })
+      .filter(d => d.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    return scoredDocs.slice(0, 8);
   }
 
   /** Extract keywords from query text */

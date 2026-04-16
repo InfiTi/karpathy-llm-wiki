@@ -89,21 +89,64 @@ export class QueryEngine {
     fileName: string;
     title: string;
     content: string;
+    score?: number;
   }[]): Promise<string> {
     if (docs.length === 0) {
       return '（知识库为空，没有找到相关信息）';
     }
 
-    let context = '相关文档:\n\n';
+    const blocks: string[] = [];
+    let totalChars = 0;
+    const maxChars = 4000;
 
     for (const doc of docs) {
-      context += `# ${doc.title}\n`;
-      context += `${doc.content.substring(0, 1000)}...\n\n`;
+      const score = doc.score || 0;
+      const title = doc.title || 'Unknown';
+      const content = doc.content || '';
+
+      // 提取相关段落（包含关键词的段落）
+      const relevantParagraphs = this.extractRelevantParagraphs(content, this.extractKeywordsFromText(doc.title + ' ' + content));
+
+      const block = `### [[${title}]]\n` +
+        `相关度: ${score}\n` +
+        `${relevantParagraphs.slice(0, 500)}`;
+
+      if (totalChars + block.length > maxChars) {
+        break;
+      }
+
+      blocks.push(block);
+      totalChars += block.length;
     }
 
-    context += `\n\n[共 ${docs.length} 个相关知识条目]`;
+    return blocks.join('\n\n---\n\n') + `\n\n---\n\n[共 ${blocks.length} 个相关知识条目]`;
+  }
 
-    return context;
+  /** Extract keywords from text */
+  private extractKeywordsFromText(text: string): string[] {
+    const chineseTerms = text.match(/[\u4e00-\u9fff]{2,}/g) || [];
+    const englishWords = text.match(/[a-zA-Z]{2,}/g) || [];
+    const chineseChars = text.match(/[\u4e00-\u9fff]/g) || [];
+
+    const allWords = [...chineseTerms, ...englishWords, ...chineseChars];
+
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'from', 'about', 'a', 'an', 'of', 'to', 'in', 'on', 'by',
+      'what', 'how', 'why', 'is', 'are', 'can', 'do', 'this', 'that',
+      '什么', '是', '的', '了', '在', '有', '和', '我', '他', '她', '它', '们'
+    ]);
+
+    return [...new Set(allWords.filter(w => !stopWords.has(w.toLowerCase())))];
+  }
+
+  /** Extract relevant paragraphs containing keywords */
+  private extractRelevantParagraphs(content: string, keywords: string[]): string {
+    const paragraphs = content.split(/\n\n+/);
+    const relevant = paragraphs.filter(p =>
+      keywords.some(kw => p.toLowerCase().includes(kw.toLowerCase())) &&
+      p.length > 30
+    );
+    return relevant.join('\n\n');
   }
 
   /** Analyze answer quality */

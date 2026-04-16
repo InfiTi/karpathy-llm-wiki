@@ -96,7 +96,7 @@ export default function DashboardPage() {
           <button className="btn btn-secondary" onClick={() => window.electronAPI?.openPath?.(config.projectRoot + '\\wiki')}>
             📂 打开 Wiki 目录
           </button>
-          <button className="btn btn-secondary" onClick={() => window.electronAPI?.openPath?.(config.projectRoot + '\\raw_sources')}>
+          <button className="btn btn-secondary" onClick={() => window.electronAPI?.openPath?.(config.projectRoot + '\\raw')}>
             📂 打开原始文档目录
           </button>
         </div>

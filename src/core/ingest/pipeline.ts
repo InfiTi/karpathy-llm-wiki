@@ -13,7 +13,7 @@ export class IngestPipeline {
   constructor(config: ProjectConfig) {
     this.llmClient = new LLMClient(config);
     this.wikiManager = new WikiManager(config.projectRoot);
-    this.rawDir = path.join(config.projectRoot, 'raw_sources');
+    this.rawDir = path.join(config.projectRoot, 'raw');
   }
 
   /** Initialize ingest pipeline */

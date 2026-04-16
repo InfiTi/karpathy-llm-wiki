@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Platform ─────────────────────────────────────────────────────────────
   platform: process.platform,
+  getLastModified: () => ipcRenderer.invoke('getLastModified'),
 });
 
 console.log('[Preload] electronAPI exposed to renderer (with core IPC)');
