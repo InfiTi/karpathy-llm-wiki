@@ -29,18 +29,31 @@ export class IngestPipeline {
 
       if (isUrl) {
         // Fetch content from URL
-        const response = await axios.get(source);
-        content = response.data;
+        const result = await this.fetchWebContent(source);
+        content = result.text;
         fileName = `${new Date().toISOString().replace(/[:.]/g, '-')}_url.md`;
+        // Save raw content
+        const rawPath = path.join(this.rawDir, fileName);
+        const rawContent = [
+          '---',
+          `title: "${result.title}"`,
+          `source_url: ${source}`,
+          `created: ${new Date().toISOString()}`,
+          '---',
+          '',
+          `# ${result.title}`,
+          '',
+          content,
+        ].join('\n');
+        await fs.writeFile(rawPath, rawContent, 'utf-8');
       } else {
         // Read content from file
         content = await fs.readFile(source, 'utf-8');
         fileName = path.basename(source);
+        // Save raw content
+        const rawPath = path.join(this.rawDir, fileName);
+        await fs.writeFile(rawPath, content, 'utf-8');
       }
-
-      // Save raw content
-      const rawPath = path.join(this.rawDir, fileName);
-      await fs.writeFile(rawPath, content, 'utf-8');
 
       // Process content
       const processedContent = await this.processContent(content);
@@ -62,6 +75,120 @@ export class IngestPipeline {
         error: error instanceof Error ? error.message : '未知错误',
       };
     }
+  }
+
+  /** Fetch web content and extract main text */
+  private async fetchWebContent(url: string): Promise<{ title: string; text: string }> {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    };
+
+    const response = await axios.get(url, { headers, timeout: 20000 });
+    const html = response.data as string;
+
+    // Parse HTML to extract title and content
+    const { title, text } = this.extractTextFromHtml(html, url);
+
+    if (!text || text.length < 50) {
+      throw new Error(`无法提取网页正文: ${url}`);
+    }
+
+    return { title, text };
+  }
+
+  /** Extract title and main content from HTML */
+  private extractTextFromHtml(html: string, baseUrl: string): { title: string; text: string } {
+    // Extract title
+    let title = '';
+    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]*)"[^>]*>/i) ||
+      html.match(/<meta[^>]*content="([^"]*)"[^>]*property="og:title"[^>]*>/i);
+    if (titleMatch) {
+      title = this.decodeHtmlEntities(titleMatch[1]);
+    } else {
+      const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
+      if (h1Match) {
+        title = this.decodeHtmlEntities(h1Match[1]);
+      }
+    }
+
+    // Extract main content - remove scripts, styles, etc.
+    let text = '';
+
+    // Try to find main content area
+    const contentPatterns = [
+      /<article[^>]*>([\s\S]*?)<\/article>/i,
+      /<div[^>]*class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      /<div[^>]*class="[^"]*article[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      /<div[^>]*class="[^"]*main[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    ];
+
+    let mainContent = '';
+    for (const pattern of contentPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].length > mainContent.length) {
+        mainContent = match[1];
+      }
+    }
+
+    // If no specific content area found, use body
+    if (!mainContent) {
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      mainContent = bodyMatch ? bodyMatch[1] : html;
+    }
+
+    // Remove unwanted tags
+    mainContent = mainContent
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '')
+      .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '');
+
+    // Extract text from paragraphs
+    const paragraphRegex = /<p[^>]*>([^<]*)<\/p>/gi;
+    const paragraphs: string[] = [];
+    let match;
+    while ((match = paragraphRegex.exec(mainContent)) !== null) {
+      const text = match[1].trim();
+      if (text.length > 20) {
+        paragraphs.push(text);
+      }
+    }
+
+    // If no paragraphs found, extract all text
+    if (paragraphs.length === 0) {
+      text = mainContent
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    } else {
+      text = paragraphs.map(p => this.decodeHtmlEntities(p)).join('\n\n');
+    }
+
+    // Clean up text
+    text = text
+      .replace(/[\r\n]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return { title, text };
+  }
+
+  /** Decode HTML entities */
+  private decodeHtmlEntities(text: string): string {
+    return text
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'");
   }
 
   /** Process content using LLM */
