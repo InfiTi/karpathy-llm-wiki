@@ -16,8 +16,55 @@ export class WikiDocument {
 
   constructor(filePath: string, content: string = '') {
     this.filePath = filePath;
-    const { data, content: body } = matter(content);
-    
+    console.log('[WikiDocument] constructor, content starts with:', content.substring(0, 100));
+
+    let body = content;
+    if (content.includes('---') && content.indexOf('---') < 10) {
+      const parts = content.split(/^---/m);
+      console.log('[WikiDocument] frontmatter block, parts.length:', parts.length);
+      if (parts.length >= 3) {
+        console.log('[WikiDocument] processing frontmatter block');
+        const yamlContent = parts[1].trim();
+        let bodyStart = parts.slice(2).join('---').trim();
+        if (bodyStart.startsWith('#')) {
+          body = bodyStart;
+        } else {
+          const titleMatch = bodyStart.match(/^#\s+(.+)$/m);
+          body = bodyStart;
+          if (titleMatch) {
+            body = bodyStart.slice(bodyStart.indexOf(titleMatch[0])).trim();
+          }
+        }
+        console.log('[WikiDocument] body after extraction:', body.substring(0, 100));
+        const parsed = matter.parse(`---\n${yamlContent}\n---`);
+        Object.assign(this, {
+          title: parsed.data.title || path.basename(filePath, '.md'),
+          tags: parsed.data.tags || [],
+          aliases: parsed.data.aliases || [],
+          created: parsed.data.created || new Date().toISOString(),
+          modified: parsed.data.modified || new Date().toISOString(),
+          metadata: {
+            title: parsed.data.title || path.basename(filePath, '.md'),
+            type: parsed.data.type || 'note',
+            tags: parsed.data.tags || [],
+            created: parsed.data.created || new Date().toISOString(),
+            modified: parsed.data.modified || new Date().toISOString(),
+            source: parsed.data.source || 'manual',
+            linked: parsed.data.linked || [],
+            ...parsed.data,
+          },
+        });
+        this.links = this._extractLinks(body);
+        this.backlinks = [];
+        this.body = body;
+        return;
+      }
+    }
+
+    console.log('[WikiDocument] no frontmatter detected, using matter.parse');
+    const { data, content: bodyWithoutFm } = matter(content);
+    body = bodyWithoutFm;
+
     this.title = data.title || path.basename(filePath, '.md');
     this.tags = data.tags || [];
     this.aliases = data.aliases || [];
@@ -26,7 +73,7 @@ export class WikiDocument {
     this.links = this._extractLinks(body);
     this.backlinks = [];
     this.body = body;
-    
+
     this.metadata = {
       title: this.title,
       type: data.type || 'note',
@@ -43,14 +90,14 @@ export class WikiDocument {
     // Extract [[wiki links]] and [markdown links](url)
     const wikiLinks = (markdown.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g) || [])
       .map(l => l.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/, '$1'));
-    
+
     const mdLinks = (markdown.match(/\[([^\]]+)\]\(([^)]+)\)/g) || [])
       .map(l => {
         const m = l.match(/\[([^\]]+)\]\(([^)]+)\)/);
         return m ? m[2] : '';
       })
       .filter(l => !l.startsWith('http'));
-    
+
     return [...new Set([...wikiLinks, ...mdLinks])];
   }
 
