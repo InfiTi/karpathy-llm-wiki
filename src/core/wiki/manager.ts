@@ -71,7 +71,10 @@ export class WikiManager {
 
   /** Create or update a wiki document */
   async saveDocument(title: string, body: string, metadata: Partial<WikiDocument['metadata']> = {}): Promise<string> {
-    const fileName = title.replace(/[\\/:*?"<>|]/g, '-') + '.md';
+    // Generate unique filename using slugify + timestamp
+    const baseName = this.slugify(title);
+    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fileName = `${baseName}_${timestamp}.md`;
     const filePath = path.join(this.wikiDir, fileName);
 
     let doc: WikiDocument;
@@ -90,6 +93,16 @@ export class WikiManager {
 
     await fs.writeFile(filePath, doc.toMarkdown(), 'utf-8');
     return filePath;
+  }
+
+  /** Convert title to lowercase-hyphen slug */
+  private slugify(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[\s\/\\:#*?"<>|]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
   }
 
   /** Delete a wiki document */

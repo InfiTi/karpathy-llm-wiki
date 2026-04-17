@@ -129,12 +129,14 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      disableBlinkFeatures: 'Autofill'
     },
   });
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     mainWindow.loadURL('http://localhost:3001');
-    mainWindow.webContents.openDevTools();
+    // 暂时禁用自动打开 DevTools 以避免 Autofill 错误
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/dist/index.html'));
   }
@@ -307,6 +309,17 @@ ipcMain.handle('ingest:processFile', async (_event: IpcMainInvokeEvent, filePath
     const config = getConfig();
     if (!coreModules.IngestPipeline) throw new Error('IngestPipeline 模块未加载');
     const pipeline = new coreModules.IngestPipeline(config);
+
+    pipeline.on('progress', (progress: { stage: string; progress: number; message: string; thinkingChars?: number; outputChars?: number }) => {
+      mainWindow?.webContents.send('ingest:progress', {
+        stage: progress.stage,
+        progress: progress.progress,
+        message: progress.message,
+        thinkingChars: progress.thinkingChars,
+        outputChars: progress.outputChars,
+      });
+    });
+
     const result = await pipeline.runIngest(filePath, false);
     return { success: true, ...result };
   } catch (err: any) { return { success: false, error: err.message }; }
@@ -340,6 +353,17 @@ ipcMain.handle('ingest:processUrl', async (_event: IpcMainInvokeEvent, url: stri
     const config = getConfig();
     if (!coreModules.IngestPipeline) throw new Error('IngestPipeline 模块未加载');
     const pipeline = new coreModules.IngestPipeline(config);
+
+    pipeline.on('progress', (progress: { stage: string; progress: number; message: string; thinkingChars?: number; outputChars?: number }) => {
+      mainWindow?.webContents.send('ingest:progress', {
+        stage: progress.stage,
+        progress: progress.progress,
+        message: progress.message,
+        thinkingChars: progress.thinkingChars,
+        outputChars: progress.outputChars,
+      });
+    });
+
     const result = await pipeline.runIngest(url, true);
     return { success: true, ...result };
   } catch (err: any) { throw new Error(err.message); }
@@ -444,6 +468,11 @@ ipcMain.handle('shell:openPath', (_event: IpcMainInvokeEvent, filePath: string) 
 // ============================================================================
 // App Lifecycle
 // ============================================================================
+// 添加命令行参数来禁用 Autofill
+app.commandLine.appendSwitch('disable-features', 'Autofill');
+app.commandLine.appendSwitch('disable-autofill');
+app.commandLine.appendSwitch('disable-autofill-service');
+
 app.whenReady().then(async () => {
   console.log('[Karpathy LLM Wiki] Starting up...');
   try {

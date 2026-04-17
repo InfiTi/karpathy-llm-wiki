@@ -55,11 +55,24 @@ export class WikiDocument {
   }
 
   toMarkdown(): string {
+    const formatDate = (isoString: string) => {
+      const date = new Date(isoString);
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/\//g, '-');
+    };
+
     const frontmatter = [
       '---',
       `title: "${this.title}"`,
-      `created: ${this.created}`,
-      `modified: ${new Date().toISOString()}`,
+      `created: ${formatDate(this.created)}`,
+      `modified: ${formatDate(new Date().toISOString())}`,
       this.tags.length ? `tags: [${this.tags.map(t => `"${t}"`).join(', ')}]` : '',
       this.aliases.length ? `aliases: [${this.aliases.map(a => `"${a}"`).join(', ')}]` : '',
       `source: ${this.metadata.source || 'manual'}`,
@@ -68,7 +81,7 @@ export class WikiDocument {
       '---',
       '',
     ].filter(Boolean).join('\n');
-    
+
     return frontmatter + this.body;
   }
 

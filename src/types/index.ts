@@ -60,6 +60,8 @@ export interface LLOptions {
 export interface IngestResult {
   success: boolean;
   filePath?: string;
+  rawPath?: string;
+  title?: string;
   error?: string;
 }
 

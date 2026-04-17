@@ -157,12 +157,20 @@ def _parse_md_frontmatter(md_text):
             print(f"[DEBUG] frontmatter 开始行: {start_idx}")
             if start_idx < len(lines):
                 end_idx = start_idx + 1
-                while end_idx < len(lines) and lines[end_idx].strip() != "---":
+                while end_idx < len(lines) and not lines[end_idx].strip().startswith("---"):
                     end_idx += 1
                 print(f"[DEBUG] frontmatter 结束行: {end_idx}")
                 if end_idx < len(lines):
+                    end_line = lines[end_idx].strip()
                     block = '\n'.join(lines[start_idx+1:end_idx])
-                    body = '\n'.join(lines[end_idx+1:])
+                    body_start = ""
+                    if end_line.startswith("---"):
+                        suffix = end_line[3:].strip()
+                        if suffix.startswith("#"):
+                            body_start = suffix + "\n"
+                        elif suffix:
+                            block += "\n" + suffix
+                    body = body_start + '\n'.join(lines[end_idx+1:])
                     print(f"[DEBUG] frontmatter 块长度: {len(block)}")
                     print(f"[DEBUG] 解析后 body 长度: {len(body)}")
 
@@ -360,6 +368,10 @@ def _ensure_frontmatter(md_text, page_type, source_url):
         fm_lines.append(f"linked: {linked_str}")
         print(f"[DEBUG] 添加 linked: {linked_str}")
     fm_lines.append("---")
+
+    if body.startswith("---"):
+        body = body[3:]
+    body = body.lstrip("\n")
 
     result = "\n".join(fm_lines) + "\n\n" + body
     print(f"[DEBUG] _ensure_frontmatter 完成，结果长度: {len(result)}")

@@ -6,6 +6,9 @@ export default function IngestPage() {
   const [files, setFiles] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const [thinkingChars, setThinkingChars] = useState(0);
+  const [outputChars, setOutputChars] = useState(0);
   const [currentFile, setCurrentFile] = useState('');
   const [results, setResults] = useState([]);
   const [abortRef] = useState({ current: false });
@@ -15,7 +18,24 @@ export default function IngestPage() {
   useEffect(() => {
     if (!window.electronAPI) return;
     const unsubscribe = window.electronAPI.onIngestProgress((data) => {
-      if (data.stage) setCurrentFile(data.filePath?.split('\\').pop() || data.filePath || '');
+      if (data.progress !== undefined) {
+        setProgress(Math.round(data.progress));
+      }
+      if (data.message) {
+        setProgressMessage(data.message);
+      }
+      if (data.thinkingChars !== undefined) {
+        setThinkingChars(data.thinkingChars);
+      }
+      if (data.outputChars !== undefined) {
+        setOutputChars(data.outputChars);
+      }
+      if (data.filePath) {
+        setCurrentFile(data.filePath.split('\\').pop() || data.filePath);
+      }
+      if (data.stage === 'complete') {
+        setProgress(100);
+      }
     });
     return unsubscribe;
   }, []);
@@ -68,7 +88,9 @@ export default function IngestPage() {
         name: result.title || url.split('/').pop() || '网页内容',
         status: result.success ? 'success' : 'error',
         message: result.success ? '处理完成' : result.error,
-        path: result.savedPath,
+        path: result.filePath,
+        rawPath: result.rawPath,
+        wikiPath: result.filePath,
       }]);
       addLog(successCount === 1 ? 'success' : 'warning',
         `✅ 网页 Ingest 完成！${successCount}/1 成功`);
@@ -97,7 +119,9 @@ export default function IngestPage() {
         name: r.title || r.filePath?.split('\\').pop() || '未知',
         status: r.success ? 'success' : 'error',
         message: r.success ? '处理完成' : r.error,
-        path: r.savedPath,
+        path: r.filePath,
+        rawPath: r.rawPath,
+        wikiPath: r.filePath,
       })));
       addLog(successCount === allResults.length ? 'success' : 'warning',
         `✅ Ingest 完成！${successCount}/${allResults.length} 成功`);
@@ -213,6 +237,17 @@ export default function IngestPage() {
             <span>{currentFile}</span>
             <span>{progress}%</span>
           </div>
+          {progressMessage && (
+            <div style={{ fontSize: 12, color: 'var(--accent-blue)', marginTop: 4 }}>
+              {progressMessage}
+            </div>
+          )}
+          {(thinkingChars > 0 || outputChars > 0) && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              {thinkingChars > 0 && <span style={{ marginRight: 16 }}>🤔 思考: {thinkingChars} 字符</span>}
+              {outputChars > 0 && <span>✍️ 输出: {outputChars} 字符</span>}
+            </div>
+          )}
         </div>
       )}
 
@@ -235,19 +270,31 @@ export default function IngestPage() {
           <div style={{ fontSize: 12, color: 'var(--accent-green)', marginBottom: 12 }}>
             ✅ {results.filter(r => r.status === 'success').length} / {results.length} 成功
           </div>
-          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             {results.map((r, i) => (
-              <div key={i} style={{ padding: '4px 0', fontSize: 12 }}>
-                <span style={{ color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                  {r.status === 'success' ? '✓' : '✗'}
-                </span>
-                <span style={{ marginLeft: 8 }}>{r.name}</span>
-                {r.message && r.status !== 'success' && (
-                  <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>— {r.message}</span>
+              <div key={i} style={{ padding: '8px 0', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <span style={{ color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                    {r.status === 'success' ? '✓' : '✗'}
+                  </span>
+                  <span style={{ marginLeft: 8, fontWeight: 500 }}>{r.name}</span>
+                  {r.message && r.status !== 'success' && (
+                    <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>— {r.message}</span>
+                  )}
+                </div>
+                {r.wikiPath && (
+                  <div style={{ marginTop: 4, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
+                    📄 Wiki: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.wikiPath}</span>
+                    <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 10 }}
+                      onClick={() => window.electronAPI?.openPath(r.wikiPath)}>打开</button>
+                  </div>
                 )}
-                {r.path && (
-                  <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 11 }}
-                    onClick={() => window.electronAPI?.openPath(r.path)}>打开</button>
+                {r.rawPath && (
+                  <div style={{ marginTop: 2, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
+                    📋 原始: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.rawPath}</span>
+                    <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 10 }}
+                      onClick={() => window.electronAPI?.openPath(r.rawPath)}>打开</button>
+                  </div>
                 )}
               </div>
             ))}

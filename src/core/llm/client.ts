@@ -1,6 +1,13 @@
 import axios from 'axios';
 import { LLMMessage, LLOptions, ProjectConfig } from '@/types';
 
+export interface LLMStreamCallback {
+  onThinking?: (text: string) => void;
+  onContent?: (text: string) => void;
+  onComplete?: (fullContent: string) => void;
+  onError?: (error: Error) => void;
+}
+
 export class LLMClient {
   private backend: string;
   private url: string;
@@ -24,7 +31,7 @@ export class LLMClient {
       const endpoint = this.backend === 'ollama'
         ? `${this.url}/api/tags`
         : `${this.url}/v1/models`;
-      
+
       const res = await axios.get(endpoint, {
         timeout: 5000,
       });
@@ -135,8 +142,14 @@ export class LLMClient {
 - 摘要（200字以内）
 - 关键概念（用列表）
 - 详细内容（分章节）
-- 相关链接（[[双向链接]] 格式）
-请用中文输出。`,
+- 相关链接（仅当有明确相关文档时使用 [[页面名称]] 格式，避免添加悬空链接）
+
+要求：
+- 只添加你确定存在的相关文档链接
+- 如果不确定相关文档是否存在，不要添加链接
+- 用中文输出，语言简洁专业
+- 不要在正文中添加不必要的列表或强调
+- 保持内容流畅，避免过度格式化`,
 
       query: `你是一个知识库问答助手，基于维基文档回答用户问题。
 要求：
@@ -219,6 +232,208 @@ export class LLMClient {
     return this.chat(messages, {
       temperature: 0.3,
       maxTokens: 2048,
+    });
+  }
+
+  /** Stream chat with callbacks for progress reporting */
+  async streamChat(messages: LLMMessage[], callback?: LLMStreamCallback): Promise<string> {
+    if (this.backend === 'ollama') {
+      return this._streamChatOllama(messages, callback);
+    } else if (this.backend === 'openai') {
+      return this._streamChatOpenAI(messages, callback);
+    } else {
+      return this._streamChatLMStudio(messages, callback);
+    }
+  }
+
+  private async _streamChatOllama(messages: LLMMessage[], callback?: LLMStreamCallback): Promise<string> {
+    let fullContent = '';
+    let thinkingContent = '';
+    let inThinking = false;
+    let lastChunkTime = Date.now();
+
+    try {
+      const response = await axios.post(`${this.url}/api/chat`, {
+        model: this.model,
+        messages,
+        stream: true,
+      }, {
+        timeout: this.timeout,
+        headers: { 'Content-Type': 'application/json' },
+        responseType: 'stream',
+      });
+
+      const stream = response.data;
+
+      return new Promise((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => {
+          try {
+            const lines = chunk.toString().split('\n');
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              const data = JSON.parse(line);
+              const delta = data.message?.content || '';
+              const reasoning = data.message?.reasoning || '';
+
+              if (reasoning) {
+                thinkingContent += reasoning;
+                inThinking = true;
+                if (callback?.onThinking) {
+                  callback.onThinking(thinkingContent);
+                }
+              }
+
+              if (delta) {
+                if (inThinking && callback?.onThinking) {
+                  callback.onThinking(''); // Signal thinking ended
+                  inThinking = false;
+                }
+                fullContent += delta;
+                if (callback?.onContent) {
+                  callback.onContent(delta);
+                }
+              }
+            }
+            lastChunkTime = Date.now();
+          } catch (e) {
+            // Ignore parse errors for incomplete chunks
+          }
+        });
+
+        stream.on('end', () => {
+          if (callback?.onComplete) {
+            callback.onComplete(fullContent);
+          }
+          resolve(fullContent);
+        });
+
+        stream.on('error', (err: Error) => {
+          if (callback?.onError) {
+            callback.onError(err);
+          }
+          reject(err);
+        });
+      });
+    } catch (error) {
+      if (callback?.onError && error instanceof Error) {
+        callback.onError(error);
+      }
+      throw error;
+    }
+  }
+
+  private async _streamChatOpenAI(messages: LLMMessage[], callback?: LLMStreamCallback): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+
+    let fullContent = '';
+
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: this.model,
+      messages,
+      stream: true,
+    }, {
+      timeout: this.timeout,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      responseType: 'stream',
+    });
+
+    const stream = response.data;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+              if (callback?.onContent) {
+                callback.onContent(delta);
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        if (callback?.onComplete) {
+          callback.onComplete(fullContent);
+        }
+        resolve(fullContent);
+      });
+
+      stream.on('error', (err: Error) => {
+        if (callback?.onError) {
+          callback.onError(err);
+        }
+        reject(err);
+      });
+    });
+  }
+
+  private async _streamChatLMStudio(messages: LLMMessage[], callback?: LLMStreamCallback): Promise<string> {
+    let fullContent = '';
+
+    const response = await axios.post(`${this.url}/v1/chat/completions`, {
+      model: this.model,
+      messages,
+      stream: true,
+    }, {
+      timeout: this.timeout,
+      headers: { 'Content-Type': 'application/json' },
+      responseType: 'stream',
+    });
+
+    const stream = response.data;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+              if (callback?.onContent) {
+                callback.onContent(delta);
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        if (callback?.onComplete) {
+          callback.onComplete(fullContent);
+        }
+        resolve(fullContent);
+      });
+
+      stream.on('error', (err: Error) => {
+        if (callback?.onError) {
+          callback.onError(err);
+        }
+        reject(err);
+      });
     });
   }
 }
