@@ -4,8 +4,8 @@
 
 export class LLMClient {
   constructor(config) {
-    this.backend = config.llmBackend || 'ollama';
-    this.url = this.backend === 'ollama' 
+    this.backend = config.llm?.backend || config.llmBackend || 'ollama';
+    this.url = this.backend === 'ollama'
       ? (config.ollamaUrl || 'http://localhost:11434')
       : (config.lmStudioUrl || 'http://localhost:1234');
     this.model = config.defaultModel || 'qwen3.5:latest';
@@ -15,7 +15,7 @@ export class LLMClient {
   /** Check if the backend is reachable */
   async ping() {
     try {
-      const endpoint = this.backend === 'ollama' 
+      const endpoint = this.backend === 'ollama'
         ? `${this.url}/api/tags`
         : `${this.url}/v1/models`;
       const res = await fetch(endpoint, { signal: AbortSignal.timeout(5000) });
@@ -93,15 +93,67 @@ export class LLMClient {
   /** Build system prompt for LLM Wiki operations */
   static wikiSystemPrompt(operation) {
     const prompts = {
-      ingest: `你是一个知识库管理员，负责从原始文档中提取关键信息，生成结构化的维基条目。
+      ingest: `你是一个严格的 LLM Wiki 编译系统。
+请严格遵循 SCHEMA 规范，对原始资料进行深度知识提炼，生成结构化的 Markdown 维基页面。
+
+### 必须输出的固定结构（按顺序全部输出）：
+
+1. **YAML frontmatter**（必须包含）：
+   - 必须以三个短横线 \`---\` 开头和结尾
+   - title：页面标题（字符串，带双引号）
+   - type：页面类型（concept/paper/person/tool/dataset/note）
+   - tags：标签列表（YAML 列表格式）
+   - created：创建日期（YYYY-MM-DD）
+   - source：来源 URL
+   - linked：关联页面列表（YAML 列表格式）
+
+2. **正文结构（固定章节，顺序不可调）：**
+   - ## 核心观点：3-5 条，用数字编号，每条一句话
+   - ## 方法论：可操作的步骤方法，用数字编号
+   - ## 实战策略：具体可执行的策略和话术
+   - ## 案例分析：包含 ### 问题、### 分析、### 解决方案 子结构
+   - ## 总结：一句话核心结论
+
+3. **内部链接**：
+   - 在正文中用 [[关键词]] 标注关联概念
+   - 每页至少 10 个 [[内部链接]]
+   - linked 字段必须列出所有关联页面
+
+4. **格式规范**：
+   - 列表项统一用数字编号（1. 2. 3.），不用短横线
+   - 禁止幻觉，内容必须来自原始资料
+   - 过滤所有营销内容（直播预约、扫码关注等）
+   - 矛盾信息标注 ⚠️
+   - 只输出 Markdown，不解释、不闲聊
+
+### 输出格式示例：
+\`\`\`
+---
+title: "保险金信托架构与婚姻财产规划"
+type: paper
+tags:
+  - 财富传承
+  - 保险金信托
+  - 婚姻财产
+created: 2024-05-20
+source: https://example.com/article
+linked:
+  - 保险信托
+  - 家族信托
+  - 现金价值
+---
+
+## 核心观点
+1. 婚姻存续期间继承所得遗产若无明确约定，通常属于 [[婚姻共同财产]]，配偶拥有 50% 所有权。
+...
+
+## 方法论
+1. 需求探询：在配置产品前，先通过提问明确客户对"不安全"的定义...
+...
+\`\`\`
+
 输入：原始文档内容
-输出：结构化的 Markdown 维基内容，包含：
-- 标题（# 一级标题）
-- 摘要（200字以内）
-- 关键概念（用列表）
-- 详细内容（分章节）
-- 相关链接（[[双向链接]] 格式）
-请用中文输出。`,
+输出：结构化的 Markdown 维基内容`,
 
       query: `你是一个知识库问答助手，基于维基文档回答用户问题。
 要求：
