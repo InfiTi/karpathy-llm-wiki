@@ -336,7 +336,7 @@ export class LLMClient {
 
               if (delta) {
                 if (inThinking && callback?.onThinking) {
-                  callback.onThinking(''); // Signal thinking ended
+                  callback.onThinking('');
                   inThinking = false;
                 }
                 fullContent += delta;
@@ -346,7 +346,6 @@ export class LLMClient {
               }
             }
           } catch (e) {
-            // Ignore parse errors for incomplete chunks
           }
         });
 
@@ -412,7 +411,6 @@ export class LLMClient {
               }
             }
           } catch (e) {
-            // Ignore parse errors
           }
         }
       });
@@ -435,6 +433,9 @@ export class LLMClient {
 
   private async _streamChatLMStudio(messages: LLMMessage[], callback?: LLMStreamCallback): Promise<string> {
     let fullContent = '';
+    let inThinking = false;
+    let pendingBuffer = '';
+    console.log(`[LLM Client] 开始 LM Studio 流式请求，模型: ${this.model}, URL: ${this.url}`);
 
     const response = await axios.post(`${this.url}/v1/chat/completions`, {
       model: this.model,
@@ -447,6 +448,10 @@ export class LLMClient {
     });
 
     const stream = response.data;
+    console.log('[LLM Client] LM Studio 连接成功，开始接收流式响应');
+
+    const THINKING_START = /^(Thinking Process:|Thinking:)\s*/i;
+    const THINK_END = /<\/think>/i;
 
     return new Promise((resolve, reject) => {
       stream.on('data', (chunk: Buffer) => {
@@ -459,19 +464,69 @@ export class LLMClient {
           try {
             const parsed = JSON.parse(data);
             const delta = parsed.choices?.[0]?.delta?.content || '';
-            if (delta) {
-              fullContent += delta;
+            if (!delta) continue;
+
+            pendingBuffer += delta;
+
+            if (inThinking) {
+              if (THINK_END.test(pendingBuffer)) {
+                const endMatch = pendingBuffer.match(THINK_END);
+                const afterEnd = pendingBuffer.slice((endMatch!.index ?? 0) + endMatch![0].length);
+                pendingBuffer = afterEnd;
+                inThinking = false;
+              } else {
+                pendingBuffer = '';
+                continue;
+              }
+            }
+
+            if (!inThinking && THINKING_START.test(pendingBuffer)) {
+              inThinking = true;
+              if (THINK_END.test(pendingBuffer)) {
+                const endMatch = pendingBuffer.match(THINK_END);
+                const afterEnd = pendingBuffer.slice((endMatch!.index ?? 0) + endMatch![0].length);
+                pendingBuffer = afterEnd;
+                inThinking = false;
+              } else {
+                pendingBuffer = '';
+                continue;
+              }
+            }
+
+            if (!inThinking && pendingBuffer.length > 0) {
+              const safeLen = Math.max(0, pendingBuffer.length - 30);
+              const toEmit = pendingBuffer.slice(0, safeLen);
+              pendingBuffer = pendingBuffer.slice(safeLen);
+              fullContent += toEmit;
               if (callback?.onContent) {
-                callback.onContent(delta);
+                callback.onContent(toEmit);
+              }
+              if (fullContent.length % 500 < toEmit.length) {
+                console.log(`[LLM Client] 已接收 ${fullContent.length} 字符`);
               }
             }
           } catch (e) {
-            // Ignore parse errors
+            console.warn('[LLM Client] 解析流式数据时出错:', e);
           }
         }
       });
 
       stream.on('end', () => {
+        if (!inThinking && pendingBuffer.length > 0) {
+          fullContent += pendingBuffer;
+          if (callback?.onContent) {
+            callback.onContent(pendingBuffer);
+          }
+        }
+
+        fullContent = fullContent
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace(/<think[\s\S]*?<\/think>/gi, '')
+          .replace(/(Thinking Process:|Thinking:)[\s\S]*?<\/think>/gi, '')
+          .replace(/(Thinking Process:|Thinking:)[\s\S]*$/gi, '')
+          .trim();
+
+        console.log(`[LLM Client] LM Studio 流式响应结束，过滤后总字符数: ${fullContent.length}`);
         if (callback?.onComplete) {
           callback.onComplete(fullContent);
         }
@@ -479,6 +534,7 @@ export class LLMClient {
       });
 
       stream.on('error', (err: Error) => {
+        console.error('[LLM Client] LM Studio 流式请求出错:', err.message);
         if (callback?.onError) {
           callback.onError(err);
         }

@@ -439,6 +439,8 @@ export class IngestPipeline extends EventEmitter {
       },
     ];
 
+    console.log('processContent messages:', messages);
+
     let fullContent = '';
     let thinkingChars = 0;
 
@@ -446,6 +448,7 @@ export class IngestPipeline extends EventEmitter {
       onThinking: (thinking) => {
         if (thinking.length > 0) {
           const newThinkingChars = thinking.length;
+          console.log('thinking:', thinking);
           if (newThinkingChars !== thinkingChars) {
             thinkingChars = newThinkingChars;
             this.emit('progress', {
@@ -490,6 +493,8 @@ export class IngestPipeline extends EventEmitter {
         console.error('LLM streaming error:', error);
       },
     });
+
+    console.log('fullContent: ', fullContent);
 
     return fullContent;
   }

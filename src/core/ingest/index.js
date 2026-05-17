@@ -32,11 +32,13 @@ export class IngestPipeline {
 
     onProgress?.('processing', filePath);
     const title = this._extractTitle(filePath, content);
-    
+
     const messages = [
       { role: 'system', content: LLMClient.wikiSystemPrompt('ingest') },
       { role: 'user', content: `请处理以下文档，生成结构化的维基条目：\n\n=== 文档标题 ===\n${title}\n\n=== 文档内容 ===\n${content.slice(0, 8000)}` }
     ];
+
+    console.log('processFile messages:', messages);
 
     onProgress?.('llm', filePath);
     const wikiContent = await this.llm.chat(messages, { temperature: 0.3, maxTokens: 4096 });
@@ -69,16 +71,16 @@ export class IngestPipeline {
     const fs = await import('fs-extra');
     const path = await import('path');
     const ext = path.extname(filePath).toLowerCase();
-    
+
     if (ext === '.txt' || ext === '.md' || ext === '.csv') {
       return await fs.readFile(filePath, 'utf-8');
     }
-    
+
     if (ext === '.json') {
       const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
       return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     }
-    
+
     if (ext === '.html') {
       const html = await fs.readFile(filePath, 'utf-8');
       // Simple HTML → text strip
@@ -93,15 +95,15 @@ export class IngestPipeline {
   _extractTitle(filePath, content) {
     const path = require('path');
     const name = path.basename(filePath, path.extname(filePath));
-    
+
     // Try front-matter title
     const fmMatch = content.match(/^#\s+(.+)$/m);
     if (fmMatch) return fmMatch[1].trim();
-    
+
     // Try first line
     const firstLine = content.split('\n')[0].trim();
     if (firstLine.length > 0 && firstLine.length < 100) return firstLine;
-    
+
     return name;
   }
 }
