@@ -1,5 +1,24 @@
 import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 import { LLMMessage, LLOptions, ProjectConfig } from '@/types';
+
+function getPromptFilePath(): string {
+  const projectRoot = process.cwd();
+  return path.join(projectRoot, 'prompts', 'ingest.md');
+}
+
+function loadIngestPromptFromFile(): string {
+  try {
+    const filePath = getPromptFilePath();
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf-8');
+    }
+  } catch (e) {
+    console.warn('Failed to load ingest prompt from file:', e);
+  }
+  return INGEST_PROMPT_DEFAULT;
+}
 
 export interface LLMStreamCallback {
   onThinking?: (text: string) => void;
@@ -8,15 +27,60 @@ export interface LLMStreamCallback {
   onError?: (error: Error) => void;
 }
 
+export const INGEST_PROMPT_DEFAULT = `你是知识编译者，将原始文档转换为结构化的Markdown知识库。
+
+## 页面格式（必须严格遵循）
+---
+title: "页面标题"
+type: note
+sources: ["原文来源"]
+created: YYYY-MM-DD
+linked: ["关联页面1", "关联页面2"]
+---
+
+## 核心观点
+1. 观点1 [[内部链接]]
+2. 观点2 [[内部链接]]
+
+## 方法论
+1. 步骤1
+2. 步骤2
+
+## 实战策略
+1. 策略1 [[内部链接]]
+2. 策略2 [[内部链接]]
+
+## 案例分析
+### 问题
+...
+### 分析
+...
+### 解决方案
+...
+
+## 总结
+一句话核心结论 [[内部链接]]
+
+## 硬性规则
+1. 只输出以上格式的Markdown，不要任何其他内容
+2. 不要输出"思考过程"、"分析步骤"等
+3. 不要解释你在做什么
+4. YAML frontmatter必须在最前面
+5. 列表用数字编号（1. 2. 3.）
+6. 内部链接用[[关键词]]格式，全文至少10个
+7. linked字段列出所有内部链接`;
+
 export class LLMClient {
   private backend: string;
   private url: string;
   private model: string;
   private apiKey?: string;
   private timeout: number;
+  private config: ProjectConfig;
 
   constructor(config: ProjectConfig) {
-    this.backend = config.llm.backend || 'ollama';
+    this.config = config;
+    this.backend = config.llm.backend?.toLowerCase() || 'ollama';
     this.url = this.backend === 'ollama'
       ? (config.llm.url || 'http://localhost:11434')
       : (config.llm.url || 'http://localhost:1234');
@@ -133,69 +197,11 @@ export class LLMClient {
   }
 
   /** Build system prompt for LLM Wiki operations */
-  static wikiSystemPrompt(operation: 'ingest' | 'query' | 'lint'): string {
+  static wikiSystemPrompt(operation: 'ingest' | 'query' | 'lint', config?: ProjectConfig): string {
+    const ingestPrompt = operation === 'ingest' ? loadIngestPromptFromFile() : INGEST_PROMPT_DEFAULT;
+
     const prompts = {
-      ingest: `你是一个严格的 LLM Wiki 编译系统。
-请严格遵循 SCHEMA 规范，对原始资料进行深度知识提炼，生成结构化的 Markdown 维基页面。
-
-### 必须输出的固定结构（按顺序全部输出）：
-
-1. **YAML frontmatter**（必须包含）：
-   - 必须以三个短横线 \`---\` 开头和结尾
-   - title：页面标题（字符串，带双引号）
-   - type：页面类型（concept/paper/person/tool/dataset/note）
-   - tags：标签列表（YAML 列表格式）
-   - created：创建日期（YYYY-MM-DD）
-   - source：来源 URL
-   - linked：关联页面列表（YAML 列表格式）
-
-2. **正文结构（固定章节，顺序不可调）：**
-   - ## 核心观点：3-5 条，用数字编号，每条一句话
-   - ## 方法论：可操作的步骤方法，用数字编号
-   - ## 实战策略：具体可执行的策略和话术
-   - ## 案例分析：包含 ### 问题、### 分析、### 解决方案 子结构
-   - ## 总结：一句话核心结论
-
-3. **内部链接**：
-   - 在正文中用 [[关键词]] 标注关联概念
-   - 每页至少 10 个 [[内部链接]]
-   - linked 字段必须列出所有关联页面
-
-4. **格式规范**：
-   - 列表项统一用数字编号（1. 2. 3.），不用短横线
-   - 禁止幻觉，内容必须来自原始资料
-   - 过滤所有营销内容（直播预约、扫码关注等）
-   - 矛盾信息标注 ⚠️
-   - 只输出 Markdown，不解释、不闲聊
-
-### 输出格式示例：
-\`\`\`
----
-title: "保险金信托架构与婚姻财产规划"
-type: paper
-tags:
-  - 财富传承
-  - 保险金信托
-  - 婚姻财产
-created: 2024-05-20
-source: https://example.com/article
-linked:
-  - 保险信托
-  - 家族信托
-  - 现金价值
----
-
-## 核心观点
-1. 婚姻存续期间继承所得遗产若无明确约定，通常属于 [[婚姻共同财产]]，配偶拥有 50% 所有权。
-...
-
-## 方法论
-1. 需求探询：在配置产品前，先通过提问明确客户对"不安全"的定义...
-...
-\`\`\`
-
-输入：原始文档内容
-输出：结构化的 Markdown 维基内容`,
+      ingest: ingestPrompt,
 
       query: `你是一个知识库问答助手，基于维基文档回答用户问题。
 要求：
@@ -229,7 +235,7 @@ linked:
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: LLMClient.wikiSystemPrompt('ingest'),
+        content: LLMClient.wikiSystemPrompt('ingest', this.config),
       },
       {
         role: 'user',
@@ -296,7 +302,6 @@ linked:
     let fullContent = '';
     let thinkingContent = '';
     let inThinking = false;
-    let lastChunkTime = Date.now();
 
     try {
       const response = await axios.post(`${this.url}/api/chat`, {
@@ -340,7 +345,6 @@ linked:
                 }
               }
             }
-            lastChunkTime = Date.now();
           } catch (e) {
             // Ignore parse errors for incomplete chunks
           }

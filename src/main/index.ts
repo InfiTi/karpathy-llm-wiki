@@ -135,8 +135,6 @@ function createWindow() {
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     mainWindow.loadURL('http://localhost:3001');
-    // 暂时禁用自动打开 DevTools 以避免 Autofill 错误
-    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/dist/index.html'));
   }
@@ -220,7 +218,6 @@ ipcMain.handle('debug:clearLogs', () => {
 // IPC Handlers - Platform
 // ============================================================================
 ipcMain.handle('config:get', (_event: IpcMainInvokeEvent, key: string) => {
-  // 使用类型安全的方式访问配置数据
   if (key === 'projectRoot') return configData.projectRoot;
   if (key === 'obsidianVault') return configData.obsidianVault;
   if (key === 'llm') return configData.llm;
@@ -231,7 +228,6 @@ ipcMain.handle('config:get', (_event: IpcMainInvokeEvent, key: string) => {
   return undefined;
 });
 ipcMain.handle('config:set', (_event: IpcMainInvokeEvent, key: string, value: any) => {
-  // 使用类型安全的方式设置配置数据
   if (key === 'projectRoot') configData.projectRoot = value;
   else if (key === 'obsidianVault') configData.obsidianVault = value;
   else if (key === 'llm') configData.llm = value;
@@ -243,6 +239,22 @@ ipcMain.handle('config:set', (_event: IpcMainInvokeEvent, key: string, value: an
   return true;
 });
 ipcMain.handle('config:getAll', () => configData);
+
+function getPromptFilePath(): string {
+  return path.join(process.cwd(), 'prompts', 'ingest.md');
+}
+
+ipcMain.handle('prompt:getIngest', async () => {
+  try {
+    const filePath = getPromptFilePath();
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf-8');
+    }
+  } catch (e) {
+    console.warn('Failed to load ingest prompt from file:', e);
+  }
+  return '';
+});
 
 ipcMain.handle('getLastModified', () => {
   return new Date().toLocaleString();
@@ -257,7 +269,6 @@ ipcMain.handle('wiki:initialize', async () => {
     if (!coreModules.WikiManager) throw new Error('WikiManager 模块未加载');
     const wiki = new coreModules.WikiManager(config.projectRoot || '');
     await wiki.initialize();
-    // 确保 raw 目录也存在
     const rawDir = path.join(config.projectRoot || '', 'raw');
     await fs.ensureDir(rawDir);
     return { success: true };
@@ -468,7 +479,6 @@ ipcMain.handle('shell:openPath', (_event: IpcMainInvokeEvent, filePath: string) 
 // ============================================================================
 // App Lifecycle
 // ============================================================================
-// 添加命令行参数来禁用 Autofill
 app.commandLine.appendSwitch('disable-features', 'Autofill');
 app.commandLine.appendSwitch('disable-autofill');
 app.commandLine.appendSwitch('disable-autofill-service');
@@ -476,11 +486,7 @@ app.commandLine.appendSwitch('disable-autofill-service');
 app.whenReady().then(async () => {
   console.log('[Karpathy LLM Wiki] Starting up...');
   try {
-    // 加载配置
     loadConfig();
-
-    // 跳过 buildCore，因为在 npm run dev 中已经运行过了
-    // await buildCore();
     await loadCoreModules();
     createWindow();
     console.log('[Karpathy LLM Wiki] Main process ready');

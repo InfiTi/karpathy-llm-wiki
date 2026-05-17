@@ -124,7 +124,7 @@ export default function QueryPage() {
         />
         <div className="flex justify-between items-center">
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Ctrl + Enter 发送 | 后端: {config.llmBackend || 'ollama'}
+            Ctrl + Enter 发送 | 后端: {config.llm?.backend || 'ollama'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button

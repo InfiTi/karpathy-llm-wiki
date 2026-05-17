@@ -471,7 +471,7 @@ export class IngestPipeline extends EventEmitter {
         fullContent += delta;
         this.emit('progress', {
           stage: 'processing',
-          progress: 60 + (fullContent.length / 100),
+          progress: Math.min(60 + (fullContent.length / 100), 99),
           message: `生成内容中... ${fullContent.length} 字符`,
           thinkingChars: 0,
           outputChars: fullContent.length,

@@ -51,19 +51,19 @@ export default function SetupPage() {
   };
 
   const testLLM = async () => {
-    addLog('info', '正在测试 LLM 连接...');
+    addLog('info', 'Testing LLM connection...');
     try {
-      const url = config.llmBackend === 'ollama' ? config.ollamaUrl : config.lmStudioUrl;
+      const url = config.llm?.url || 'http://localhost:11434';
       const res = await fetch(`${url}/api/tags`);
       if (res.ok) {
         const data = await res.json();
         const models = data.models || [];
-        addLog('success', `✅ LLM 连接成功！可用模型: ${models.map(m => m.name).join(', ') || '无'}`);
+        addLog('success', `LLM connected! Models: ${models.map(m => m.name).join(', ') || 'none'}`);
       } else {
-        addLog('error', `❌ LLM 返回错误: ${res.status}`);
+        addLog('error', `LLM error: ${res.status}`);
       }
     } catch (e) {
-      addLog('error', `❌ 无法连接 LLM: ${e.message}`);
+      addLog('error', `Cannot connect LLM: ${e.message}`);
     }
   };
 
@@ -103,15 +103,15 @@ export default function SetupPage() {
         </div>
 
         <div className="form-group">
-          <label className="form-label">后端类型</label>
+          <label className="form-label">Backend Type</label>
           <div style={{ display: 'flex', gap: 8 }}>
             {['ollama', 'lmstudio'].map(b => (
               <button
                 key={b}
-                className={`btn ${config.llmBackend === b ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setConfig('llmBackend', b)}
+                className={`btn ${config.llm?.backend === b ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setConfig('llm', { ...config.llm, backend: b })}
               >
-                {b === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
+                {b === 'ollama' ? 'Ollama' : 'LM Studio'}
               </button>
             ))}
           </div>
@@ -119,20 +119,20 @@ export default function SetupPage() {
 
         <div className="grid-2">
           <div className="form-group">
-            <label className="form-label">服务地址</label>
+            <label className="form-label">Service URL</label>
             <input
               className="input"
-              value={config.llmBackend === 'ollama' ? (config.ollamaUrl || 'http://localhost:11434') : (config.lmStudioUrl || 'http://localhost:1234')}
-              onChange={e => setConfig(config.llmBackend === 'ollama' ? 'ollamaUrl' : 'lmStudioUrl', e.target.value)}
+              value={config.llm?.url || 'http://localhost:11434'}
+              onChange={e => setConfig('llm', { ...config.llm, url: e.target.value })}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">默认模型</label>
+            <label className="form-label">Default Model</label>
             <input
               className="input"
-              placeholder="如: qwen3.5:latest"
-              value={config.defaultModel || ''}
-              onChange={e => setConfig('defaultModel', e.target.value)}
+              placeholder="e.g. qwen3.5:latest"
+              value={config.llm?.model || ''}
+              onChange={e => setConfig('llm', { ...config.llm, model: e.target.value })}
             />
           </div>
         </div>

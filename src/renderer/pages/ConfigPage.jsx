@@ -1,9 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useStore from '../store/useStore';
 
 export default function ConfigPage() {
   const { config, setConfig } = useStore();
   const [saved, setSaved] = useState(false);
+
+  const [testInput, setTestInput] = useState('香港银行高息存款指南：虚拟银行（如Livi、Ant、PAOBank）和部分中小银行（如南洋、华侨）提供较高存款利率。大行如汇丰、渣打利率较低。香港存款保险保障每个储户80万港币。新资金奖励活动可在7天内享受更高利率。\n\n原文：杨笑 (Katie)\n标签：香港银行、美元存款、港币存款、虚拟银行、中小银行');
+  const [testOutput, setTestOutput] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+  const [ingestPrompt, setIngestPrompt] = useState('');
+  const [editedPrompt, setEditedPrompt] = useState('');
+
+  useEffect(() => {
+    loadIngestPrompt();
+  }, []);
+
+  const loadIngestPrompt = async () => {
+    if (!window.electronAPI) return;
+    try {
+      const prompt = await window.electronAPI.getIngestPrompt();
+      setIngestPrompt(prompt);
+      setEditedPrompt(prompt);
+    } catch (e) {
+      console.error('Failed to load ingest prompt:', e);
+    }
+  };
+
+  const testIngestPrompt = async () => {
+    const promptToUse = editedPrompt || ingestPrompt;
+    if (!window.electronAPI) {
+      setTestOutput('错误：electronAPI 不可用');
+      return;
+    }
+    setIsTesting(true);
+    setTestOutput('正在测试...');
+
+    try {
+      const result = await window.electronAPI.llmTestPrompt(promptToUse, testInput);
+      setTestOutput(result);
+    } catch (err) {
+      setTestOutput(`错误: ${err.message}`);
+    }
+    setIsTesting(false);
+  };
+
+  const resetPrompt = () => {
+    setEditedPrompt(ingestPrompt);
+  };
+
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(editedPrompt);
+    alert('Prompt 已复制到剪贴板');
+  };
 
   const saveAll = async () => {
     setSaved(true);
@@ -18,9 +66,8 @@ export default function ConfigPage() {
   ];
 
   const llmFields = [
-    { key: 'ollamaUrl', label: 'Ollama 地址', type: 'text', default: 'http://localhost:11434' },
-    { key: 'lmStudioUrl', label: 'LM Studio 地址', type: 'text', default: 'http://localhost:1234' },
-    { key: 'defaultModel', label: '默认模型', type: 'text', placeholder: '如: qwen3.5:latest' },
+    { key: 'url', label: 'Service URL', type: 'text', default: 'http://localhost:11434' },
+    { key: 'model', label: 'Default Model', type: 'text', placeholder: 'e.g. qwen3.5:latest' },
   ];
 
   return (
@@ -59,21 +106,21 @@ export default function ConfigPage() {
         <div className="card-title">🤖 AI 后端配置</div>
 
         <div className="form-group">
-          <label className="form-label">后端类型</label>
+          <label className="form-label">Backend Type</label>
           <div className="flex gap-8">
             {[
-              { key: 'ollama', label: '🦙 Ollama', desc: '开源本地模型' },
-              { key: 'lmstudio', label: '💡 LM Studio', desc: '桌面模型管理' },
+              { key: 'ollama', label: 'Ollama', desc: 'Open source local model' },
+              { key: 'lmstudio', label: 'LM Studio', desc: 'Desktop model management' },
             ].map(b => (
               <div
                 key={b.key}
-                onClick={() => setConfig('llmBackend', b.key)}
+                onClick={() => setConfig('llm', { ...config.llm, backend: b.key })}
                 style={{
                   flex: 1,
                   padding: '12px 16px',
                   borderRadius: 8,
-                  border: `1px solid ${config.llmBackend === b.key ? 'var(--accent-blue)' : 'var(--border)'}`,
-                  background: config.llmBackend === b.key ? 'rgba(88,166,255,0.08)' : 'var(--bg-primary)',
+                  border: `1px solid ${config.llm?.backend === b.key ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  background: config.llm?.backend === b.key ? 'rgba(88,166,255,0.08)' : 'var(--bg-primary)',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
@@ -91,40 +138,99 @@ export default function ConfigPage() {
             <input
               className="input"
               type="text"
-              value={config[f.key] || ''}
+              value={config.llm?.[f.key] || ''}
               placeholder={f.placeholder || f.default}
-              onChange={e => setConfig(f.key, e.target.value)}
+              onChange={e => setConfig('llm', { ...config.llm, [f.key]: e.target.value })}
             />
           </div>
         ))}
 
         <div className="mt-16">
           <button className="btn btn-primary" onClick={async () => {
-            const url = config.llmBackend === 'ollama'
-              ? (config.ollamaUrl || 'http://localhost:11434')
-              : (config.lmStudioUrl || 'http://localhost:1234');
             try {
-              const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
-              alert(res.ok ? '✅ 连接成功！' : `❌ 返回 ${res.status}`);
+              const result = await window.electronAPI.llmPing();
+              alert(result ? 'Connected!' : 'Cannot connect');
             } catch (e) {
-              alert(`❌ 无法连接: ${e.message}`);
+              alert(`Cannot connect: ${e.message}`);
             }
-          }}>🔗 测试连接</button>
+          }}>Test Connection</button>
         </div>
       </div>
 
-      {/* About */}
+      {/* Prompt 调试面板 */}
       <div className="card mt-16">
-        <div className="card-title">ℹ️ 关于</div>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-          <div><strong>Karpathy LLM Wiki</strong> v0.1.0</div>
-          <div style={{ marginTop: 8 }}>
-            基于 Andrej Karpathy 提出的 LLM Wiki 概念构建的本地知识库系统。
+        <div className="card-title">🧪 Prompt 调试面板</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {/* 左侧：Prompt 编辑 */}
+          <div>
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label className="form-label">Ingest Prompt（可编辑）</label>
+                <div className="flex gap-8">
+                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }} onClick={resetPrompt}>重置</button>
+                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }} onClick={copyPrompt}>复制</button>
+                </div>
+              </div>
+              <textarea
+                className="input"
+                value={editedPrompt}
+                onChange={e => setEditedPrompt(e.target.value)}
+                rows={18}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+              />
+            </div>
           </div>
-          <div style={{ marginTop: 8 }}>
-            三层架构: <strong>Ingest</strong> (摄入) → <strong>Query</strong> (查询) → <strong>Lint</strong> (检查)
+
+          {/* 右侧：测试输入和输出 */}
+          <div>
+            <div className="form-group">
+              <label className="form-label">测试输入文本</label>
+              <textarea
+                className="input"
+                value={testInput}
+                onChange={e => setTestInput(e.target.value)}
+                rows={6}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+              />
+            </div>
+
+            <button
+              className="btn btn-primary"
+              onClick={testIngestPrompt}
+              disabled={isTesting}
+              style={{ width: '100%' }}
+            >
+              {isTesting ? '⏳ 测试中...' : '🚀 测试 Prompt'}
+            </button>
+
+            {testOutput && (
+              <div className="mt-16">
+                <label className="form-label">LLM 输出结果</label>
+                <pre style={{
+                  background: 'var(--bg-secondary)',
+                  padding: 12,
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: 300,
+                  overflow: 'auto',
+                  border: testOutput.includes('错误') ? '1px solid var(--accent-red)' : '1px solid var(--border)'
+                }}>
+                  {testOutput}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="mt-24 flex justify-end">
+        <button className="btn btn-primary" onClick={saveAll}>
+          {saved ? '✓ Saved' : 'Save All'}
+        </button>
       </div>
     </div>
   );

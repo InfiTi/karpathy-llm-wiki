@@ -88,7 +88,7 @@ export default function App() {
                   AI 后端
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {config.llmBackend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
+                  {config.llm?.backend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
                 </div>
               </div>
             </div>
@@ -118,7 +118,7 @@ function StatusIndicator() {
   const checkBackend = async () => {
     if (!window.electronAPI) return 'no-api';
     try {
-      const res = await fetch(`${config.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${config.llm?.url || 'http://localhost:11434'}/api/tags`, { signal: AbortSignal.timeout(3000) });
       return res.ok ? 'online' : 'offline';
     } catch {
       return 'offline';

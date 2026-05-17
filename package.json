@@ -2,7 +2,7 @@
   "name": "karpathy-llm-wiki",
   "version": "0.1.0",
   "description": "Local LLM Wiki system based on Karpathy's concept - Ingest, Query, Lint",
-  "main": "dist/main/index.js",
+  "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "npm run build:core && npm run build:main && concurrently -k \"npm run dev:renderer\" \"wait-on http://localhost:3001 && npm run dev:electron\"",
     "build:core": "node scripts/build-core.js",

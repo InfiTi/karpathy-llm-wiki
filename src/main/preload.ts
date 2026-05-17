@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setConfig: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
   getAllConfig: () => ipcRenderer.invoke('config:getAll'),
 
+  // ── Prompts ─────────────────────────────────────────────────────────────
+  getIngestPrompt: () => ipcRenderer.invoke('prompt:getIngest'),
+
   // ── Wiki ────────────────────────────────────────────────────────────────
   wikiInitialize: () => ipcRenderer.invoke('wiki:initialize'),
   wikiListDocuments: () => ipcRenderer.invoke('wiki:listDocuments'),
@@ -44,14 +47,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   queryGetTopicRecommendations: (question: string, answer: string) => ipcRenderer.invoke('query:getTopicRecommendations', question, answer),
   queryGetKnowledgeGaps: () => ipcRenderer.invoke('query:getKnowledgeGaps'),
 
-  // ── Lint ────────────────────────────────────────────────────────────────
-  lintRunLint: () => ipcRenderer.invoke('lint:runLint'),
-  lintGetWikiStatistics: () => ipcRenderer.invoke('lint:getWikiStatistics'),
-
   // ── LLM ─────────────────────────────────────────────────────────────────
   llmChat: (messages: any[], options: any) => ipcRenderer.invoke('llm:chat', messages, options),
   llmPing: () => ipcRenderer.invoke('llm:ping'),
   llmListModels: () => ipcRenderer.invoke('llm:listModels'),
+  llmTestPrompt: (systemPrompt: string, userContent: string) => ipcRenderer.invoke('llm:testPrompt', systemPrompt, userContent),
+
+  // ── Lint ────────────────────────────────────────────────────────────────
+  lintRunLint: () => ipcRenderer.invoke('lint:runLint'),
+  lintGetWikiStatistics: () => ipcRenderer.invoke('lint:getWikiStatistics'),
 
   // ── Debug ───────────────────────────────────────────────────────────────
   debugGetLogs: () => ipcRenderer.invoke('debug:getLogs'),

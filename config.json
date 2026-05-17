@@ -1,10 +1,24 @@
 {
-  "projectRoot": "F:\\Obsidian\\wiki Test",
+  "projectRoot": "F:\\Obsidian\\wikiTest2",
   "obsidianVault": "",
-  "llmBackend": "lmStudio",
-  "ollamaUrl": "http://localhost:11434",
-  "lmStudioUrl": "http://localhost:12345",
-  "defaultModel": "qwen3.5:latest",
-  "rawSourcesDir": "raw_sources",
-  "wikiDir": "wiki"
+  "llm": {
+    "backend": "lmstudio",
+    "url": "http://localhost:12345",
+    "model": "qwen3.5:latest",
+    "apiKey": "",
+    "timeout": 120000
+  },
+  "wiki": {
+    "directory": "wiki",
+    "rawDirectory": "raw_sources"
+  },
+  "ingest": {
+    "defaultPageType": "note"
+  },
+  "query": {
+    "maxContextTokens": 4096
+  },
+  "lint": {
+    "autoCheck": true
+  }
 }

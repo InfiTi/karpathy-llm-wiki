@@ -81,7 +81,7 @@ export default function DashboardPage() {
             {llmStatus.checking ? '检测中...' : llmStatus.ok ? '已连接' : '未连接'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            AI 后端 ({config.llmBackend || 'ollama'})
+            AI 后端 ({config.llm?.backend || 'ollama'})
           </div>
         </div>
       </div>

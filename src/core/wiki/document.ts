@@ -36,7 +36,7 @@ export class WikiDocument {
           }
         }
         console.log('[WikiDocument] body after extraction:', body.substring(0, 100));
-        const parsed = matter.parse(`---\n${yamlContent}\n---`);
+        const parsed = matter(`---\n${yamlContent}\n---`);
         Object.assign(this, {
           title: parsed.data.title || path.basename(filePath, '.md'),
           tags: parsed.data.tags || [],
