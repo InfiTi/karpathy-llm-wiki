@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { chromium } from 'playwright';
 import { LLMClient } from '@/core/llm';
 import { WikiManager } from '@/core/wiki';
+import { slugify } from '@/core/common/utils';
 import { ProjectConfig, IngestResult } from '@/types';
 
 export interface IngestProgress {
@@ -63,7 +64,10 @@ export class IngestPipeline extends EventEmitter {
           };
         }
 
-        fileName = `${new Date().toISOString().replace(/[:.]/g, '-')}_url.md`;
+        const now = new Date();
+        const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+        const titleSlug = result.title ? slugify(result.title) : 'untitled';
+        fileName = `${titleSlug}_${ts}.md`;
         // Save raw content
         const rawPath = path.join(this.rawDir, fileName);
         console.log('[IngestPipeline] 保存原始内容到:', rawPath);
