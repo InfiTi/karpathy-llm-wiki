@@ -70,7 +70,7 @@ export class IngestPipeline extends EventEmitter {
 
         const now = new Date();
         const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-        const titleSlug = result.title ? slugify(result.title) : 'untitled';
+        const titleSlug = result.title && result.title.trim() ? slugify(result.title) : 'untitled';
         fileName = `${titleSlug}_${ts}.md`;
         // Save raw content
         const rawPath = path.join(this.rawDir, fileName);

@@ -3,11 +3,12 @@ import fs from 'fs-extra';
 
 /**
  * Slugify a string for use in file names
+ * 保留中文字符和英文数字
  */
 export function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\u4e00-\u9fa5a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
 
