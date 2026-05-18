@@ -115,13 +115,19 @@ export class WikiDocument {
       }).replace(/\//g, '-');
     };
 
+    const formatYamlList = (key: string, values: string[]): string => {
+      if (!values || values.length === 0) return '';
+      const items = values.map(v => `  - "${v}"`).join('\n');
+      return `${key}:\n${items}`;
+    };
+
     const frontmatter = [
       '---',
       `title: "${this.title}"`,
       `created: ${formatDate(this.created)}`,
       `modified: ${formatDate(new Date().toISOString())}`,
-      this.tags.length ? `tags: [${this.tags.map(t => `"${t}"`).join(', ')}]` : '',
-      this.aliases.length ? `aliases: [${this.aliases.map(a => `"${a}"`).join(', ')}]` : '',
+      formatYamlList('tags', this.tags),
+      formatYamlList('aliases', this.aliases),
       `source: ${this.metadata.source || 'manual'}`,
       this.metadata.type ? `type: ${this.metadata.type}` : '',
       this.metadata.linked && this.metadata.linked.length ? `linked: [${this.metadata.linked.map(l => `"${l}"`).join(', ')}]` : '',

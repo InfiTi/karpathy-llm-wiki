@@ -32,18 +32,22 @@
 - 确定优先级和风险评估
 - 生成完整的迁移计划文档
 
-### Task-015: 核心功能迁移
+### Task-015: Ingest 后同步更新 Index
+- 创建 IndexManager 管理 index.md 更新
+- 在 IngestPipeline 中集成 IndexManager
+
+### Task-016: 核心功能迁移
 - 将 Python 版本的 Ingest 功能迁移到 TypeScript
 - 将 Python 版本的 Query 功能迁移到 TypeScript
 - 将 Python 版本的 Lint 功能迁移到 TypeScript
 - 实现 LLM 客户端的 TypeScript 版本
 
-### Task-016: 功能测试与优化
+### Task-017: 功能测试与优化
 - 确保所有迁移的功能正常工作
 - 进行性能测试和用户体验测试
 - 优化 TypeScript 代码质量和性能
 
-### Task-017: TypeScript 升级与发布
+### Task-018: TypeScript 升级与发布
 - 将 JavaScript 代码升级到 TypeScript
 - 优化安装包大小
 - 实现自动更新机制

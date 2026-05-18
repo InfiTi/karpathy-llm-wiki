@@ -16,9 +16,30 @@
 - 在输出中包含 "Thinking"、"思考"、"分析" 等词汇
 - 在 YAML frontmatter 之前出现任何非 YAML 内容
 
+**YAML Frontmatter 格式要求**：
+- 数组必须使用标准 YAML 多行列表格式，不要使用 JSON 风格的内联数组
+- 正确示例：
+  ```yaml
+  tags:
+    - "tag1"
+    - "tag2"
+  aliases:
+    - "别名1"
+    - "别名2"
+  ```
+- 错误示例（不要这样写）：
+  ```yaml
+  tags: [tag1, tag2]
+  aliases: [别名1, 别名2]
+  ```
+
 ---
-aliases: [别名1, 别名2] # 如果有核心概念的其他等价称呼，写在这里，否则留空
-tags: [wiki/ingest, 领域标签] # 领域标签根据文本内容归类，如 #ai/llm, #tech/coding
+aliases:
+  - "别名1"
+  - "别名2"
+tags:
+  - "wiki/ingest"
+  - "领域标签"
 source: "用户输入源描述"
 status: "Compiled"
 compiled_at: {{CURRENT_DATE}}

@@ -106,6 +106,7 @@ export class WikiManager {
   private slugify(title: string): string {
     return title
       .toLowerCase()
+      .replace(/[\[\]]/g, '')
       .replace(/[\s\/\\:#*?"<>|]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')

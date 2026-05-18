@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { chromium } from 'playwright';
 import { LLMClient } from '@/core/llm';
 import { WikiManager } from '@/core/wiki';
+import { IndexManager } from '@/core/index';
 import { slugify } from '@/core/common/utils';
 import { ProjectConfig, IngestResult } from '@/types';
 
@@ -21,6 +22,7 @@ export interface IngestProgress {
 export class IngestPipeline extends EventEmitter {
   private llmClient: LLMClient;
   private wikiManager: WikiManager;
+  private indexManager: IndexManager;
   private rawDir: string;
 
   constructor(config: ProjectConfig) {
@@ -28,6 +30,7 @@ export class IngestPipeline extends EventEmitter {
     console.log('[IngestPipeline] 初始化，projectRoot:', config.projectRoot);
     this.llmClient = new LLMClient(config);
     this.wikiManager = new WikiManager(config.projectRoot);
+    this.indexManager = new IndexManager(config.projectRoot);
     this.rawDir = path.join(config.projectRoot, 'raw');
     console.log('[IngestPipeline] rawDir:', this.rawDir);
   }
@@ -35,6 +38,7 @@ export class IngestPipeline extends EventEmitter {
   /** Initialize ingest pipeline */
   async initialize(): Promise<void> {
     await this.wikiManager.initialize();
+    await this.indexManager.initialize();
   }
 
   /** Run ingest process for a file or URL */
@@ -116,6 +120,19 @@ export class IngestPipeline extends EventEmitter {
       this.emit('progress', { stage: 'writing', progress: 80, message: '正在保存到Wiki...' });
       const wikiPath = await this.generateWikiPage(processedContent, fileName);
       console.log('[IngestPipeline] Wiki页面保存路径:', wikiPath);
+
+      // Update index
+      const titleMatch = processedContent.match(/^#\s+(.*)$/m);
+      const title = titleMatch ? titleMatch[1].trim() : path.basename(fileName, path.extname(fileName));
+      const fileNameOnly = path.basename(wikiPath);
+      await this.indexManager.updateIndex({
+        title,
+        fileName: fileNameOnly,
+        type: 'Note',
+        tags: [],
+        created: new Date().toISOString().split('T')[0],
+      });
+      console.log('[IngestPipeline] Index 已更新');
 
       console.log('[IngestPipeline] 阶段 4/4: 完成');
       this.emit('progress', { stage: 'complete', progress: 100, message: '摄入完成!' });
