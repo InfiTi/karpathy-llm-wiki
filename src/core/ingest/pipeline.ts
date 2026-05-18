@@ -50,6 +50,7 @@ export class IngestPipeline extends EventEmitter {
     try {
       let content: string;
       let fileName: string;
+      let rawPath: string;
 
       if (isUrl) {
         // Fetch content from URL
@@ -73,7 +74,7 @@ export class IngestPipeline extends EventEmitter {
         const titleSlug = result.title && result.title.trim() ? slugify(result.title) : 'untitled';
         fileName = `${titleSlug}_${ts}.md`;
         // Save raw content
-        const rawPath = path.join(this.rawDir, fileName);
+        rawPath = path.join(this.rawDir, fileName);
         console.log('[IngestPipeline] 保存原始内容到:', rawPath);
         const rawContent = [
           '---',
@@ -105,7 +106,7 @@ export class IngestPipeline extends EventEmitter {
 
         fileName = path.basename(source);
         // Save raw content
-        const rawPath = path.join(this.rawDir, fileName);
+        rawPath = path.join(this.rawDir, fileName);
         console.log('[IngestPipeline] 保存原始内容到:', rawPath);
         await fs.writeFile(rawPath, content, 'utf-8');
       }
@@ -118,7 +119,7 @@ export class IngestPipeline extends EventEmitter {
       // Generate wiki page
       console.log('[IngestPipeline] 阶段 3/4: 生成Wiki页面...');
       this.emit('progress', { stage: 'writing', progress: 80, message: '正在保存到Wiki...' });
-      const wikiPath = await this.generateWikiPage(processedContent, fileName);
+      const wikiPath = await this.generateWikiPage(processedContent, fileName, rawPath);
       console.log('[IngestPipeline] Wiki页面保存路径:', wikiPath);
 
       // Update index
@@ -521,15 +522,28 @@ export class IngestPipeline extends EventEmitter {
   }
 
   /** Generate wiki page from processed content */
-  async generateWikiPage(content: string, sourceFileName: string): Promise<string> {
+  async generateWikiPage(content: string, sourceFileName: string, rawPath: string): Promise<string> {
     const titleMatch = content.match(/^#\s+(.*)$/m);
     const extractedTitle = titleMatch ? titleMatch[1].trim() : path.basename(sourceFileName, path.extname(sourceFileName));
 
     const title = extractedTitle;
 
+    const rawFileName = path.basename(rawPath);
+    const sourceUrl = `[[../raw/${rawFileName}|原始文件]]`;
+
     return this.wikiManager.saveDocument(title, content, {
-      source: 'ingest-generated',
       type: 'note',
+      status: 'Compiled',
+      source_type: 'wechat_article',
+      source_origin: '待补充来源信息',
+      source_url: sourceUrl,
+      reliability: 3,
+      compiler: 'qwen-3.5-9b',
+      compiler_version: 'v1.0',
+      compiled_at: new Date().toISOString(),
+      lint_count: 0,
+      last_linted_at: '',
+      entities: [],
     });
   }
 

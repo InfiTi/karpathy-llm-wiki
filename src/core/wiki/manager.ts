@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs-extra';
+import matter from 'gray-matter';
 import { WikiDocument } from './document';
 
 export class WikiManager {
@@ -71,7 +72,6 @@ export class WikiManager {
 
   /** Create or update a wiki document */
   async saveDocument(title: string, body: string, metadata: Partial<WikiDocument['metadata']> = {}): Promise<string> {
-    // Generate unique filename using slugify + timestamp (YYYYMMDD_HHmmss)
     const baseName = this.slugify(title);
     const now = new Date();
     const year = now.getFullYear();
@@ -85,17 +85,33 @@ export class WikiManager {
     const filePath = path.join(this.wikiDir, fileName);
 
     let doc: WikiDocument;
+    let mergedMetadata = { ...metadata };
+
+    let cleanedBody = body
+      .replace(/<think[\s\S]*?<\/think[\s>]*\s*/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trim();
+
+    try {
+      const parsed = matter(cleanedBody);
+      if (parsed.data && Object.keys(parsed.data).length > 0) {
+        mergedMetadata = { ...parsed.data, ...metadata };
+        cleanedBody = parsed.content.trim();
+      }
+    } catch (e) {
+      console.log('[WikiManager] failed to parse frontmatter from body');
+    }
 
     if (await fs.pathExists(filePath)) {
       const content = await fs.readFile(filePath, 'utf-8');
       doc = new WikiDocument(filePath, content);
-      doc.body = body;
-      doc.updateMetadata(metadata);
+      doc.body = cleanedBody;
+      doc.updateMetadata(mergedMetadata);
     } else {
       doc = new WikiDocument(filePath);
       doc.title = title;
-      doc.body = body;
-      doc.updateMetadata(metadata);
+      doc.body = cleanedBody;
+      doc.updateMetadata(mergedMetadata);
     }
 
     await fs.writeFile(filePath, doc.toMarkdown(), 'utf-8');

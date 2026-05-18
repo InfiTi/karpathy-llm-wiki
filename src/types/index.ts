@@ -37,9 +37,38 @@ export interface WikiDocumentMetadata {
   [key: string]: any;
 }
 
+export type WikiDocumentType = 'note' | 'index' | 'moc';
+export type WikiDocumentStatus = 'Raw' | 'Compiled' | 'Deprecated';
+export type SourceType = 'wechat_article' | 'pdf' | 'web_clip' | 'book' | 'other';
+export type Reliability = 1 | 2 | 3 | 4 | 5;
+
+export interface WikiFrontMatter {
+  title: string;
+  created: string;
+  modified: string;
+  type: WikiDocumentType;
+  status: WikiDocumentStatus;
+
+  source_type: SourceType;
+  source_origin: string;
+  source_url?: string;
+  reliability: Reliability;
+
+  compiler: string;
+  compiler_version: string;
+
+  compiled_at: string;
+  lint_count: number;
+  last_linted_at: string;
+
+  aliases: string[];
+  tags: string[];
+  entities: string[];
+}
+
 export interface WikiDocument {
   filePath: string;
-  metadata: WikiDocumentMetadata;
+  metadata: WikiFrontMatter;
   body: string;
   links: string[];
 }

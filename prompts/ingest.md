@@ -34,15 +34,33 @@
   ```
 
 ---
+title: "主标题"
+created: "{{CURRENT_DATE}}"
+modified: "{{CURRENT_DATE}}"
+type: "note"
+status: "Compiled"
+
+source_type: "wechat_article"                                    # 来源类型：wechat_article, pdf, web_clip, book, other
+source_origin: "具体来源名称，如：公众号《XX》关于XXX的文章"      # 具体的源名称
+source_url: "[[../raw/原始文件名|原始文件]]"                      # Obsidian 超链接格式
+reliability: 3                                                    # 信任评级 1-5：1最低(传言), 3中等(自媒体), 5最高(官网/研报)
+
+compiler: "qwen-3.5-9b"                                          # 编译使用的模型
+compiler_version: "v1.0"                                         # 提示词版本号
+
+compiled_at: "{{CURRENT_DATE}}"
+lint_count: 0                                                    # 被 Lint 脚本更新的次数
+last_linted_at: ""
+
 aliases:
   - "别名1"
   - "别名2"
 tags:
   - "wiki/ingest"
   - "领域标签"
-source: "用户输入源描述"
-status: "Compiled"
-compiled_at: {{CURRENT_DATE}}
+entities:                                                          # 核心双链实体，方便脚本快速索引
+  - "[[实体A]]"
+  - "[[实体B]]"
 ---
 
 # [[主标题/核心实体名称]]

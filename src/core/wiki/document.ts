@@ -1,93 +1,113 @@
 import path from 'path';
 import matter from 'gray-matter';
-import { WikiDocumentMetadata } from '@/types';
+import { WikiFrontMatter, WikiDocumentType, WikiDocumentStatus, SourceType, Reliability } from '@/types';
+
+const DEFAULT_FRONT_MATTER: WikiFrontMatter = {
+  title: '',
+  created: new Date().toISOString(),
+  modified: new Date().toISOString(),
+  type: 'note',
+  status: 'Compiled',
+  source_type: 'other',
+  source_origin: '',
+  reliability: 3,
+  compiler: 'manual',
+  compiler_version: '',
+  compiled_at: new Date().toISOString(),
+  lint_count: 0,
+  last_linted_at: '',
+  aliases: [],
+  tags: [],
+  entities: [],
+};
 
 export class WikiDocument {
   public filePath: string;
   public title: string;
   public tags: string[];
   public aliases: string[];
+  public entities: string[];
   public created: string;
   public modified: string;
   public links: string[];
   public backlinks: string[];
   public body: string;
-  public metadata: WikiDocumentMetadata;
+  public metadata: WikiFrontMatter;
 
   constructor(filePath: string, content: string = '') {
     this.filePath = filePath;
     console.log('[WikiDocument] constructor, content starts with:', content.substring(0, 100));
 
     let body = content;
-    if (content.includes('---') && content.indexOf('---') < 10) {
-      const parts = content.split(/^---/m);
-      console.log('[WikiDocument] frontmatter block, parts.length:', parts.length);
-      if (parts.length >= 3) {
-        console.log('[WikiDocument] processing frontmatter block');
-        const yamlContent = parts[1].trim();
-        let bodyStart = parts.slice(2).join('---').trim();
-        if (bodyStart.startsWith('#')) {
-          body = bodyStart;
-        } else {
-          const titleMatch = bodyStart.match(/^#\s+(.+)$/m);
-          body = bodyStart;
-          if (titleMatch) {
-            body = bodyStart.slice(bodyStart.indexOf(titleMatch[0])).trim();
-          }
+    let mergedData: Record<string, any> = {};
+
+    if (content.startsWith('---')) {
+      const frontmatterPattern = /^---\s*([\s\S]*?)\s*---/gm;
+      let match;
+      let lastIndex = 0;
+
+      while ((match = frontmatterPattern.exec(content)) !== null) {
+        try {
+          const parsed = matter(`---\n${match[1]}\n---`);
+          console.log('[WikiDocument] parsed frontmatter keys:', Object.keys(parsed.data));
+          mergedData = { ...mergedData, ...parsed.data };
+        } catch (e) {
+          console.log('[WikiDocument] failed to parse frontmatter section');
         }
-        console.log('[WikiDocument] body after extraction:', body.substring(0, 100));
-        const parsed = matter(`---\n${yamlContent}\n---`);
-        Object.assign(this, {
-          title: parsed.data.title || path.basename(filePath, '.md'),
-          tags: parsed.data.tags || [],
-          aliases: parsed.data.aliases || [],
-          created: parsed.data.created || new Date().toISOString(),
-          modified: parsed.data.modified || new Date().toISOString(),
-          metadata: {
-            title: parsed.data.title || path.basename(filePath, '.md'),
-            type: parsed.data.type || 'note',
-            tags: parsed.data.tags || [],
-            created: parsed.data.created || new Date().toISOString(),
-            modified: parsed.data.modified || new Date().toISOString(),
-            source: parsed.data.source || 'manual',
-            linked: parsed.data.linked || [],
-            ...parsed.data,
-          },
-        });
-        this.links = this._extractLinks(body);
-        this.backlinks = [];
-        this.body = body;
-        return;
+        lastIndex = frontmatterPattern.lastIndex;
       }
+
+      body = content.substring(lastIndex).trim();
+      if (!body.startsWith('#')) {
+        const titleMatch = body.match(/^#\s+(.+)$/m);
+        if (titleMatch) {
+          body = body.slice(body.indexOf(titleMatch[0])).trim();
+        }
+      }
+      console.log('[WikiDocument] body after extraction:', body.substring(0, 100));
+    } else {
+      console.log('[WikiDocument] no frontmatter detected, using matter.parse');
+      const { data, content: bodyWithoutFm } = matter(content);
+      mergedData = data;
+      body = bodyWithoutFm;
     }
 
-    console.log('[WikiDocument] no frontmatter detected, using matter.parse');
-    const { data, content: bodyWithoutFm } = matter(content);
-    body = bodyWithoutFm;
-
-    this.title = data.title || path.basename(filePath, '.md');
-    this.tags = data.tags || [];
-    this.aliases = data.aliases || [];
-    this.created = data.created || new Date().toISOString();
-    this.modified = data.modified || new Date().toISOString();
+    const fm = this._buildFrontMatter(mergedData);
+    this.title = fm.title || path.basename(filePath, '.md');
+    this.tags = fm.tags || [];
+    this.aliases = fm.aliases || [];
+    this.entities = fm.entities || [];
+    this.created = fm.created;
+    this.modified = fm.modified;
     this.links = this._extractLinks(body);
     this.backlinks = [];
     this.body = body;
+    this.metadata = fm;
+  }
 
-    this.metadata = {
-      title: this.title,
-      type: data.type || 'note',
-      tags: this.tags,
-      created: this.created,
-      modified: this.modified,
-      source: data.source || 'manual',
-      linked: data.linked || [],
-      ...data,
+  private _buildFrontMatter(data: Record<string, any>): WikiFrontMatter {
+    return {
+      title: data.title || path.basename(this.filePath, '.md'),
+      created: data.created || new Date().toISOString(),
+      modified: data.modified || new Date().toISOString(),
+      type: (data.type as WikiDocumentType) || 'note',
+      status: (data.status as WikiDocumentStatus) || 'Compiled',
+      source_type: (data.source_type as SourceType) || 'other',
+      source_origin: data.source_origin || '',
+      source_url: data.source_url,
+      reliability: (data.reliability as Reliability) || 3,
+      compiler: data.compiler || 'manual',
+      compiler_version: data.compiler_version || '',
+      compiled_at: data.compiled_at || new Date().toISOString(),
+      lint_count: typeof data.lint_count === 'number' ? data.lint_count : 0,
+      last_linted_at: data.last_linted_at || '',
+      aliases: Array.isArray(data.aliases) ? data.aliases : [],
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      entities: Array.isArray(data.entities) ? data.entities : [],
     };
   }
 
   private _extractLinks(markdown: string): string[] {
-    // Extract [[wiki links]] and [markdown links](url)
     const wikiLinks = (markdown.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g) || [])
       .map(l => l.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/, '$1'));
 
@@ -115,33 +135,64 @@ export class WikiDocument {
       }).replace(/\//g, '-');
     };
 
-    const formatYamlList = (key: string, values: string[]): string => {
-      if (!values || values.length === 0) return '';
-      const items = values.map(v => `  - "${v}"`).join('\n');
-      return `${key}:\n${items}`;
+    const formatArray = (arr: string[]): string => {
+      if (!arr || arr.length === 0) return '';
+      return arr.map(v => `  - "${v}"`).join('\n');
     };
 
-    const frontmatter = [
+    const lines: string[] = [
       '---',
-      `title: "${this.title}"`,
-      `created: ${formatDate(this.created)}`,
-      `modified: ${formatDate(new Date().toISOString())}`,
-      formatYamlList('tags', this.tags),
-      formatYamlList('aliases', this.aliases),
-      `source: ${this.metadata.source || 'manual'}`,
-      this.metadata.type ? `type: ${this.metadata.type}` : '',
-      this.metadata.linked && this.metadata.linked.length ? `linked: [${this.metadata.linked.map(l => `"${l}"`).join(', ')}]` : '',
-      '---',
+      `title: "${this.metadata.title}"`,
+      `created: ${formatDate(this.metadata.created)}`,
+      `modified: ${formatDate(this.metadata.modified)}`,
+      `type: "${this.metadata.type}"`,
+      `status: "${this.metadata.status}"`,
       '',
-    ].filter(Boolean).join('\n');
+      `source_type: "${this.metadata.source_type}"`,
+      `source_origin: "${this.metadata.source_origin}"`,
+    ];
 
-    return frontmatter + this.body;
+    if (this.metadata.source_url) {
+      lines.push(`source_url: "${this.metadata.source_url}"`);
+    }
+    lines.push(`reliability: ${this.metadata.reliability}`);
+
+    lines.push('');
+
+    if (this.metadata.compiler) {
+      lines.push(`compiler: "${this.metadata.compiler}"`);
+    }
+    if (this.metadata.compiler_version) {
+      lines.push(`compiler_version: "${this.metadata.compiler_version}"`);
+    }
+
+    lines.push('');
+    lines.push(`compiled_at: ${formatDate(this.metadata.compiled_at)}`);
+    lines.push(`lint_count: ${this.metadata.lint_count}`);
+    lines.push(`last_linted_at: ${this.metadata.last_linted_at ? formatDate(this.metadata.last_linted_at) : ''}`);
+
+    lines.push('');
+    lines.push(`aliases:`);
+    lines.push(formatArray(this.metadata.aliases));
+
+    lines.push(`tags:`);
+    lines.push(formatArray(this.metadata.tags));
+
+    lines.push(`entities:`);
+    lines.push(formatArray(this.metadata.entities));
+
+    lines.push('---', '');
+
+    return lines.join('\n') + this.body;
   }
 
-  updateMetadata(metadata: Partial<WikiDocumentMetadata>): void {
+  updateMetadata(metadata: Partial<WikiFrontMatter>): void {
     this.metadata = { ...this.metadata, ...metadata };
     this.title = this.metadata.title || this.title;
     this.tags = this.metadata.tags || this.tags;
+    this.aliases = this.metadata.aliases || this.aliases;
+    this.entities = this.metadata.entities || this.entities;
     this.modified = new Date().toISOString();
+    this.metadata.modified = this.modified;
   }
 }
