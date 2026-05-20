@@ -50,8 +50,7 @@ export interface WikiFrontMatter {
   status: WikiDocumentStatus;
 
   source_type: SourceType;
-  source_origin: string;
-  source_url?: string;
+  raw_file: string;
   reliability: Reliability;
 
   compiler: string;

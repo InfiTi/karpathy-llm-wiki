@@ -9,7 +9,7 @@ const DEFAULT_FRONT_MATTER: WikiFrontMatter = {
   type: 'note',
   status: 'Compiled',
   source_type: 'other',
-  source_origin: '',
+  raw_file: '',
   reliability: 3,
   compiler: 'manual',
   compiler_version: '',
@@ -36,7 +36,6 @@ export class WikiDocument {
 
   constructor(filePath: string, content: string = '') {
     this.filePath = filePath;
-    console.log('[WikiDocument] constructor, content starts with:', content.substring(0, 100));
 
     let body = content;
     let mergedData: Record<string, any> = {};
@@ -49,10 +48,9 @@ export class WikiDocument {
       while ((match = frontmatterPattern.exec(content)) !== null) {
         try {
           const parsed = matter(`---\n${match[1]}\n---`);
-          console.log('[WikiDocument] parsed frontmatter keys:', Object.keys(parsed.data));
           mergedData = { ...mergedData, ...parsed.data };
         } catch (e) {
-          console.log('[WikiDocument] failed to parse frontmatter section');
+          // skip
         }
         lastIndex = frontmatterPattern.lastIndex;
       }
@@ -64,25 +62,120 @@ export class WikiDocument {
           body = body.slice(body.indexOf(titleMatch[0])).trim();
         }
       }
-      console.log('[WikiDocument] body after extraction:', body.substring(0, 100));
-    } else {
-      console.log('[WikiDocument] no frontmatter detected, using matter.parse');
-      const { data, content: bodyWithoutFm } = matter(content);
-      mergedData = data;
-      body = bodyWithoutFm;
+    }
+
+    const bodyMetadata = this._parseBodyMetadata(body);
+    mergedData = { ...mergedData, ...bodyMetadata };
+
+    const allLines = body.split('\n');
+    const cleanedLines: string[] = [];
+    let inYamlBlock = false;
+
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+
+      if (line.trim() === '```yaml') {
+        inYamlBlock = true;
+        if (i > 0 && allLines[i - 1].trim().startsWith('## Metadata')) {
+          cleanedLines.pop();
+        }
+        continue;
+      }
+
+      if (inYamlBlock && (line.trim() === '```' || line.trim() === '---')) {
+        inYamlBlock = false;
+        continue;
+      }
+
+      if (!inYamlBlock) {
+        cleanedLines.push(line);
+      }
+    }
+
+    body = cleanedLines.join('\n').trim();
+
+    if (bodyMetadata.tags && bodyMetadata.tags.length > 0) {
+      mergedData.tags = bodyMetadata.tags;
+    }
+    if (bodyMetadata.aliases && bodyMetadata.aliases.length > 0) {
+      mergedData.aliases = bodyMetadata.aliases;
+    }
+
+    if (!content.startsWith('---')) {
+      mergedData.title = path.basename(filePath, '.md');
     }
 
     const fm = this._buildFrontMatter(mergedData);
     this.title = fm.title || path.basename(filePath, '.md');
     this.tags = fm.tags || [];
     this.aliases = fm.aliases || [];
-    this.entities = fm.entities || [];
+    this.entities = fm.entities || this._extractEntities(body);
     this.created = fm.created;
     this.modified = fm.modified;
     this.links = this._extractLinks(body);
     this.backlinks = [];
     this.body = body;
     this.metadata = fm;
+  }
+
+  private _parseBodyMetadata(body: string): Record<string, any> {
+    const metadata: Record<string, any> = { tags: [], aliases: [], entities: [] };
+
+    const lines = body.split('\n');
+    let inYamlBlock = false;
+    let yamlContent: string[] = [];
+
+    for (const line of lines) {
+      if (line.trim() === '```yaml') {
+        inYamlBlock = true;
+        continue;
+      }
+
+      if (inYamlBlock && line.trim() === '```') {
+        break;
+      }
+
+      if (inYamlBlock) {
+        yamlContent.push(line);
+      }
+    }
+
+    if (yamlContent.length === 0) {
+      return metadata;
+    }
+
+    let currentKey: string | null = null;
+    for (const line of yamlContent) {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed === '---') continue;
+
+      const keyMatch = trimmed.match(/^(\w+):$/);
+      if (keyMatch) {
+        currentKey = keyMatch[1];
+        continue;
+      }
+
+      if (currentKey === 'tags' || currentKey === 'aliases') {
+        const itemMatch = trimmed.match(/^-\s*(.+)$/);
+        if (itemMatch && !itemMatch[1].startsWith('[')) {
+          const value = itemMatch[1].replace(/"/g, '').trim();
+          if (value) {
+            metadata[currentKey].push(value);
+          }
+        }
+      }
+    }
+
+    return metadata;
+  }
+
+  private _extractEntities(body: string): string[] {
+    const wikiLinks = body.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g) || [];
+    const entities = wikiLinks
+      .map(l => l.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/, '$1'))
+      .filter(e => !e.includes('/'));
+    return [...new Set(entities)];
   }
 
   private _buildFrontMatter(data: Record<string, any>): WikiFrontMatter {
@@ -93,8 +186,7 @@ export class WikiDocument {
       type: (data.type as WikiDocumentType) || 'note',
       status: (data.status as WikiDocumentStatus) || 'Compiled',
       source_type: (data.source_type as SourceType) || 'other',
-      source_origin: data.source_origin || '',
-      source_url: data.source_url,
+      raw_file: data.raw_file || '',
       reliability: (data.reliability as Reliability) || 3,
       compiler: data.compiler || 'manual',
       compiler_version: data.compiler_version || '',
@@ -140,6 +232,8 @@ export class WikiDocument {
       return arr.map(v => `  - "${v}"`).join('\n');
     };
 
+    const rawFileName = this.metadata.raw_file;
+    const displayName = rawFileName.replace(/\.md$/, '');
     const lines: string[] = [
       '---',
       `title: "${this.metadata.title}"`,
@@ -149,13 +243,9 @@ export class WikiDocument {
       `status: "${this.metadata.status}"`,
       '',
       `source_type: "${this.metadata.source_type}"`,
-      `source_origin: "${this.metadata.source_origin}"`,
+      `raw_file: "[[../raw/${rawFileName}|${displayName}]]"`,
+      `reliability: ${this.metadata.reliability}`,
     ];
-
-    if (this.metadata.source_url) {
-      lines.push(`source_url: "${this.metadata.source_url}"`);
-    }
-    lines.push(`reliability: ${this.metadata.reliability}`);
 
     lines.push('');
 
@@ -172,14 +262,26 @@ export class WikiDocument {
     lines.push(`last_linted_at: ${this.metadata.last_linted_at ? formatDate(this.metadata.last_linted_at) : ''}`);
 
     lines.push('');
-    lines.push(`aliases:`);
-    lines.push(formatArray(this.metadata.aliases));
+    if (this.metadata.aliases && this.metadata.aliases.length > 0) {
+      lines.push(`aliases:`);
+      lines.push(formatArray(this.metadata.aliases));
+    } else {
+      lines.push(`aliases: []`);
+    }
 
-    lines.push(`tags:`);
-    lines.push(formatArray(this.metadata.tags));
+    if (this.metadata.tags && this.metadata.tags.length > 0) {
+      lines.push(`tags:`);
+      lines.push(formatArray(this.metadata.tags));
+    } else {
+      lines.push(`tags: []`);
+    }
 
-    lines.push(`entities:`);
-    lines.push(formatArray(this.metadata.entities));
+    if (this.metadata.entities && this.metadata.entities.length > 0) {
+      lines.push(`entities:`);
+      lines.push(formatArray(this.metadata.entities));
+    } else {
+      lines.push(`entities: []`);
+    }
 
     lines.push('---', '');
 

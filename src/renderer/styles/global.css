@@ -354,3 +354,17 @@ html, body, #root {
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(20px); } }
+.slide-in { animation: slideIn 0.3s ease-out; }
+
+/* Toast Colors */
+:root {
+  --bg-green: rgba(63, 185, 80, 0.15);
+  --text-green: #3fb950;
+  --bg-red: rgba(248, 81, 73, 0.15);
+  --text-red: #f85149;
+  --bg-blue: rgba(88, 166, 255, 0.15);
+  --text-blue: #58a6ff;
+}

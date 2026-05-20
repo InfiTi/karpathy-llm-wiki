@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../store/useStore';
 
 export default function IngestPage() {
-  const { config, addLog } = useStore();
+  const { config, addLog, showToast } = useStore();
   const [files, setFiles] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -84,18 +84,27 @@ export default function IngestPage() {
     try {
       const result = await window.electronAPI.ingestProcessUrl(url);
       const successCount = result.success ? 1 : 0;
-      setResults([{
+      const resultItem = {
         name: result.title || url.split('/').pop() || '网页内容',
         status: result.success ? 'success' : 'error',
         message: result.success ? '处理完成' : result.error,
         path: result.filePath,
         rawPath: result.rawPath,
         wikiPath: result.filePath,
-      }]);
+      };
+      setResults([resultItem]);
       addLog(successCount === 1 ? 'success' : 'warning',
         `✅ 网页 Ingest 完成！${successCount}/1 成功`);
+
+      // Show Toast
+      if (result.success) {
+        showToast('success', 'Ingest 成功！', `已生成 Wiki 条目：${resultItem.name}`);
+      } else {
+        showToast('error', 'Ingest 失败', resultItem.message);
+      }
     } catch (err) {
       addLog('error', `网页 Ingest 失败: ${err.message}`);
+      showToast('error', 'Ingest 失败', err.message);
     }
 
     setProgress(100);
@@ -115,18 +124,29 @@ export default function IngestPage() {
     try {
       const allResults = await window.electronAPI.ingestProcessBatch(filePaths);
       const successCount = allResults.filter(r => r.success).length;
-      setResults(allResults.map(r => ({
+      const formattedResults = allResults.map(r => ({
         name: r.title || r.filePath?.split('\\').pop() || '未知',
         status: r.success ? 'success' : 'error',
         message: r.success ? '处理完成' : r.error,
         path: r.filePath,
         rawPath: r.rawPath,
         wikiPath: r.filePath,
-      })));
+      }));
+      setResults(formattedResults);
       addLog(successCount === allResults.length ? 'success' : 'warning',
         `✅ Ingest 完成！${successCount}/${allResults.length} 成功`);
+
+      // Show Toast
+      if (successCount === allResults.length) {
+        showToast('success', 'Ingest 全部成功！', `已处理 ${successCount} 个文件`);
+      } else if (successCount > 0) {
+        showToast('info', 'Ingest 部分成功', `${successCount}/${allResults.length} 成功`);
+      } else {
+        showToast('error', 'Ingest 全部失败', '请查看日志了解详情');
+      }
     } catch (err) {
       addLog('error', `Ingest 失败: ${err.message}`);
+      showToast('error', 'Ingest 失败', err.message);
     }
 
     setProgress(100);
@@ -272,30 +292,52 @@ export default function IngestPage() {
           </div>
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             {results.map((r, i) => (
-              <div key={i} style={{ padding: '8px 0', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
-                <div>
-                  <span style={{ color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {r.status === 'success' ? '✓' : '✗'}
-                  </span>
-                  <span style={{ marginLeft: 8, fontWeight: 500 }}>{r.name}</span>
-                  {r.message && r.status !== 'success' && (
-                    <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>— {r.message}</span>
+              <div key={i} style={{ padding: '10px 0', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div>
+                      <span style={{ color: r.status === 'success' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                        {r.status === 'success' ? '✓' : '✗'}
+                      </span>
+                      <span style={{ marginLeft: 8, fontWeight: 500, fontSize: 13 }}>{r.name}</span>
+                      {r.message && r.status !== 'success' && (
+                        <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>— {r.message}</span>
+                      )}
+                    </div>
+                    {r.wikiPath && (
+                      <div style={{ marginTop: 6, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
+                        📄 Wiki: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.wikiPath}</span>
+                      </div>
+                    )}
+                    {r.rawPath && (
+                      <div style={{ marginTop: 4, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
+                        📋 原始: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.rawPath}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  {r.status === 'success' && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      {r.wikiPath && (
+                        <>
+                          <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 11 }}
+                            onClick={() => window.electronAPI?.openPath(r.wikiPath)}>
+                            📝 打开文件
+                          </button>
+                          <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 11 }}
+                            onClick={() => {
+                              if (window.electronAPI?.openPath) {
+                                window.electronAPI.openPath(r.wikiPath);
+                              }
+                            }}>
+                            ⚡ 在 Obsidian 查看
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-                {r.wikiPath && (
-                  <div style={{ marginTop: 4, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
-                    📄 Wiki: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.wikiPath}</span>
-                    <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 10 }}
-                      onClick={() => window.electronAPI?.openPath(r.wikiPath)}>打开</button>
-                  </div>
-                )}
-                {r.rawPath && (
-                  <div style={{ marginTop: 2, marginLeft: 20, color: 'var(--text-muted)', fontSize: 11 }}>
-                    📋 原始: <span style={{ fontFamily: 'var(--font-mono)' }}>{r.rawPath}</span>
-                    <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 10 }}
-                      onClick={() => window.electronAPI?.openPath(r.rawPath)}>打开</button>
-                  </div>
-                )}
               </div>
             ))}
           </div>

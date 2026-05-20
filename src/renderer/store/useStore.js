@@ -72,6 +72,18 @@ const useStore = create((set, get) => ({
 
   setLintResults: (r) => set({ lintResults: r }),
   setLintRunning: (r) => set({ lintRunning: r }),
+
+  // Toast Notifications
+  toast: null, // { type: 'success'|'error'|'info', title: string, message?: string }
+
+  showToast: (type, title, message) => {
+    set({ toast: { type, title, message } });
+    // Auto dismiss after 4 seconds
+    setTimeout(() => {
+      set({ toast: null });
+    }, 4000);
+  },
+  hideToast: () => set({ toast: null }),
 }));
 
 export default useStore;

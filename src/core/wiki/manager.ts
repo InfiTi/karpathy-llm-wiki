@@ -99,7 +99,17 @@ export class WikiManager {
         cleanedBody = parsed.content.trim();
       }
     } catch (e) {
-      console.log('[WikiManager] failed to parse frontmatter from body');
+      // skip
+    }
+
+    const bodyMetadata = this._extractBodyMetadata(cleanedBody);
+    cleanedBody = this._stripYamlCodeBlocks(cleanedBody);
+
+    if (bodyMetadata.tags.length > 0 && !(mergedMetadata.tags as string[])?.length) {
+      mergedMetadata.tags = bodyMetadata.tags;
+    }
+    if (bodyMetadata.aliases.length > 0 && !(mergedMetadata.aliases as string[])?.length) {
+      mergedMetadata.aliases = bodyMetadata.aliases;
     }
 
     if (await fs.pathExists(filePath)) {
@@ -116,6 +126,84 @@ export class WikiManager {
 
     await fs.writeFile(filePath, doc.toMarkdown(), 'utf-8');
     return filePath;
+  }
+
+  /** Extract tags/aliases from yaml code blocks in body */
+  private _extractBodyMetadata(body: string): { tags: string[]; aliases: string[] } {
+    const result = { tags: [] as string[], aliases: [] as string[] };
+    const lines = body.split('\n');
+    let inYamlBlock = false;
+    let yamlContent: string[] = [];
+
+    for (const line of lines) {
+      if (line.trim() === '```yaml') {
+        inYamlBlock = true;
+        continue;
+      }
+      if (inYamlBlock && line.trim() === '```') {
+        break;
+      }
+      if (inYamlBlock) {
+        yamlContent.push(line);
+      }
+    }
+
+    if (yamlContent.length === 0) return result;
+
+    let currentKey: string | null = null;
+    for (const line of yamlContent) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === '---') continue;
+
+      const keyMatch = trimmed.match(/^(\w+):$/);
+      if (keyMatch) {
+        currentKey = keyMatch[1];
+        continue;
+      }
+
+      if (currentKey === 'tags' || currentKey === 'aliases') {
+        const itemMatch = trimmed.match(/^-\s*(.+)$/);
+        if (itemMatch && !itemMatch[1].startsWith('[')) {
+          const value = itemMatch[1].replace(/"/g, '').trim();
+          if (value) {
+            result[currentKey].push(value);
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /** Strip yaml code blocks (and preceding ## Metadata header) from body */
+  private _stripYamlCodeBlocks(body: string): string {
+    const lines = body.split('\n');
+    const cleaned: string[] = [];
+    let inYamlBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === '```yaml') {
+        inYamlBlock = true;
+        if (cleaned.length > 0 && cleaned[cleaned.length - 1].trim().startsWith('## Metadata')) {
+          cleaned.pop();
+        }
+        continue;
+      }
+      if (inYamlBlock && (line.trim() === '```' || line.trim() === '---')) {
+        inYamlBlock = false;
+        continue;
+      }
+      if (!inYamlBlock) {
+        // 移除任何多余的 ``` 结束标记
+        if (line.trim() === '```') {
+          continue;
+        }
+        cleaned.push(line);
+      }
+    }
+
+    return cleaned.join('\n').trim();
   }
 
   /** Convert title to lowercase-hyphen slug */

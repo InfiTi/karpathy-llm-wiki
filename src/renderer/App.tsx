@@ -27,7 +27,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export default function App() {
-  const { config, loadConfig } = useStore();
+  const { config, loadConfig, toast, hideToast } = useStore();
 
   useEffect(() => {
     loadConfig();
@@ -45,6 +45,49 @@ export default function App() {
             <StatusIndicator />
           </div>
         </header>
+
+        {/* Toast Notification */}
+        {toast && (
+          <div
+            className="toast"
+            style={{
+              position: 'fixed',
+              top: 24,
+              right: 24,
+              zIndex: 9999,
+              background: toast.type === 'success' ? 'var(--bg-green)' :
+                toast.type === 'error' ? 'var(--bg-red)' : 'var(--bg-blue)',
+              color: toast.type === 'success' ? 'var(--text-green)' :
+                toast.type === 'error' ? 'var(--text-red)' : 'var(--text-blue)',
+              padding: '16px 20px',
+              borderRadius: 8,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+              maxWidth: 400,
+              animation: 'slideIn 0.3s ease-out'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{toast.title}</div>
+                {toast.message && (
+                  <div style={{ fontSize: 12, marginTop: 4, opacity: 0.85 }}>{toast.message}</div>
+                )}
+              </div>
+              <button
+                onClick={hideToast}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  opacity: 0.6,
+                  marginLeft: 16,
+                  color: 'inherit'
+                }}
+              >×</button>
+            </div>
+          </div>
+        )}
 
         <div className="app-body">
           {/* Sidebar */}

@@ -529,14 +529,13 @@ export class IngestPipeline extends EventEmitter {
     const title = extractedTitle;
 
     const rawFileName = path.basename(rawPath);
-    const sourceUrl = `[[../raw/${rawFileName}|原始文件]]`;
 
     return this.wikiManager.saveDocument(title, content, {
       type: 'note',
       status: 'Compiled',
       source_type: 'wechat_article',
       source_origin: '待补充来源信息',
-      source_url: sourceUrl,
+      raw_file: rawFileName, // 正确字段名！
       reliability: 3,
       compiler: 'qwen-3.5-9b',
       compiler_version: 'v1.0',
