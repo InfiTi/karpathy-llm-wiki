@@ -13,6 +13,7 @@ async function build() {
   await esbuild.build({
     entryPoints: [
       path.join(__dirname, '..', 'src', 'core', 'llm', 'client.ts'),
+      path.join(__dirname, '..', 'src', 'core', 'index', 'index.ts'),
       path.join(__dirname, '..', 'src', 'core', 'wiki', 'index.ts'),
       path.join(__dirname, '..', 'src', 'core', 'ingest', 'index.ts'),
       path.join(__dirname, '..', 'src', 'core', 'query', 'index.ts'),

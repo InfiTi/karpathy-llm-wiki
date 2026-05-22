@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import matter from 'gray-matter';
 import { WikiDocument } from './document';
+import { WikiDocumentInfo } from './types';
 
 export class WikiManager {
   private rawDir: string;
@@ -20,32 +21,10 @@ export class WikiManager {
   }
 
   /** List all wiki documents */
-  async listDocuments(): Promise<{
-    title: string;
-    filePath: string;
-    fileName: string;
-    tags: string[];
-    aliases: string[];
-    links: string[];
-    size: number;
-    modified: Date;
-    created: string;
-    content: string;
-  }[]> {
+  async listDocuments(): Promise<WikiDocumentInfo[]> {
     const files = await fs.readdir(this.wikiDir);
     const mdFiles = files.filter((f: string) => f.endsWith('.md'));
-    const docs: {
-      title: string;
-      filePath: string;
-      fileName: string;
-      tags: string[];
-      aliases: string[];
-      links: string[];
-      size: number;
-      modified: Date;
-      created: string;
-      content: string;
-    }[] = [];
+    const docs: WikiDocumentInfo[] = [];
 
     for (const file of mdFiles) {
       const filePath = path.join(this.wikiDir, file);
@@ -57,8 +36,12 @@ export class WikiManager {
         title: doc.title,
         filePath,
         fileName: file,
+        type: doc.metadata.type,
+        status: doc.metadata.status,
+        sourceType: doc.metadata.source_type,
         tags: doc.tags,
         aliases: doc.aliases,
+        entities: doc.entities,
         links: doc.links,
         size: stat.size,
         modified: stat.mtime,
