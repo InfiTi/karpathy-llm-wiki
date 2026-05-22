@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: (key: string) => ipcRenderer.invoke('config:get', key),
   setConfig: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
   getAllConfig: () => ipcRenderer.invoke('config:getAll'),
+  showNotification: (options: { type: string; title: string; message?: string }) => ipcRenderer.invoke('notification:show', options),
 
   // ── Prompts ─────────────────────────────────────────────────────────────
   getIngestPrompt: () => ipcRenderer.invoke('prompt:getIngest'),

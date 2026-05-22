@@ -22,7 +22,42 @@ const NAV_ITEMS = [
 ];
 
 export default function App() {
-  const { config, loadConfig } = useStore();
+  const { config, loadConfig, toast } = useStore();
+
+  useEffect(() => {
+    if (!toast || config?.notifications?.sound === false) return;
+
+    let audioContext;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = toast.type === 'success' ? 800 : toast.type === 'error' ? 400 : 600;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+      oscillator.onended = () => {
+        audioContext?.close().catch(() => {});
+      };
+    } catch (error) {
+      console.error('Failed to play notification sound:', error);
+      audioContext?.close().catch(() => {});
+    }
+  }, [toast, config]);
 
   useEffect(() => {
     loadConfig();
@@ -43,7 +78,8 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <>
+      <BrowserRouter>
       <div className="app-shell">
         {/* Header */}
         <header className="app-header">
@@ -108,7 +144,8 @@ export default function App() {
           </main>
         </div>
       </div>
-    </BrowserRouter>
+      </BrowserRouter>
+    </>
   );
 }
 

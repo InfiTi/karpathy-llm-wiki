@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs-extra';
 import { ProjectConfig } from '@/types';
@@ -142,6 +142,28 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+function showDesktopNotification(options: { type: string; title: string; message?: string }) {
+  if (!Notification.isSupported()) return false;
+
+  const notification = new Notification({
+    title: options.title,
+    body: options.message || '',
+    silent: true,
+    timeoutType: 'default',
+    urgency: options.type === 'error' ? 'critical' : 'normal',
+  });
+
+  notification.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  notification.show();
+  return true;
+}
+
 // ============================================================================
 // IPC Handlers - File System
 // ============================================================================
@@ -239,6 +261,15 @@ ipcMain.handle('config:set', (_event: IpcMainInvokeEvent, key: string, value: an
   return true;
 });
 ipcMain.handle('config:getAll', () => configData);
+
+ipcMain.handle('notification:show', (_event: IpcMainInvokeEvent, options: { type: string; title: string; message?: string }) => {
+  try {
+    return showDesktopNotification(options);
+  } catch (err: any) {
+    console.warn('Failed to show desktop notification:', err?.message || err);
+    return false;
+  }
+});
 
 function getPromptFilePath(): string {
   return path.join(process.cwd(), 'prompts', 'ingest.md');

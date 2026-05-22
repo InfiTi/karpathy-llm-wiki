@@ -79,6 +79,7 @@ const useStore = create((set, get) => ({
   showToast: (type, title, message) => {
     console.log('showToast called:', { type, title, message });
     set({ toast: { type, title, message } });
+    window.electronAPI?.showNotification?.({ type, title, message });
     // Auto dismiss after 4 seconds
     setTimeout(() => {
       set({ toast: null });
