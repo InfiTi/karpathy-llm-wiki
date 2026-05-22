@@ -5,12 +5,14 @@ export default function LintPage() {
   const { config, addLog } = useStore();
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  const [expandedKeys, setExpandedKeys] = useState({});
 
   const runLint = async () => {
     if (!config.projectRoot || !window.electronAPI) return;
 
     setRunning(true);
     setResult(null);
+    setExpandedKeys({});
     addLog('info', '开始执行 Lint 检查...');
 
     try {
@@ -35,6 +37,13 @@ export default function LintPage() {
     acc[issue.severity].push(issue);
     return acc;
   }, {}) || {};
+
+  const toggleExpanded = (key) => {
+    setExpandedKeys(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   return (
     <div>
@@ -111,8 +120,14 @@ export default function LintPage() {
 
                   <div style={{ marginTop: 12 }}>
                     {issues.map((issue, index) => (
+                      (() => {
+                        const expandKey = `${severity}-${index}`;
+                        const expanded = !!expandedKeys[expandKey];
+                        const hasDetails = Array.isArray(issue.details) && issue.details.length > 0;
+
+                        return (
                       <div
-                        key={`${severity}-${index}`}
+                        key={expandKey}
                         style={{
                           padding: '12px 0',
                           borderBottom: index === issues.length - 1 ? 'none' : '1px solid var(--border)',
@@ -125,7 +140,38 @@ export default function LintPage() {
                         <div style={{ color: 'var(--text-muted)' }}>
                           建议：{issue.suggestion}
                         </div>
+
+                        {hasDetails && (
+                          <div style={{ marginTop: 8 }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: 12 }}
+                              onClick={() => toggleExpanded(expandKey)}
+                            >
+                              {expanded ? '收起详情' : `查看详情（${issue.details.length}）`}
+                            </button>
+                          </div>
+                        )}
+
+                        {hasDetails && expanded && (
+                          <div style={{
+                            marginTop: 10,
+                            padding: '10px 12px',
+                            background: 'rgba(255,255,255,0.03)',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            color: 'var(--text-secondary)'
+                          }}>
+                            {issue.details.map((detail, detailIndex) => (
+                              <div key={`${expandKey}-detail-${detailIndex}`} style={{ marginBottom: detailIndex === issue.details.length - 1 ? 0 : 6 }}>
+                                - {detail}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                        );
+                      })()
                     ))}
                   </div>
                 </div>

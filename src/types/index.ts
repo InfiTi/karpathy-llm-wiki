@@ -108,6 +108,7 @@ export interface LintResult {
     severity: 'high' | 'medium' | 'low';
     description: string;
     suggestion: string;
+    details?: string[];
   }[];
   summary: string;
 }

@@ -103,6 +103,7 @@ export class LintChecker {
       severity: 'medium' as const,
       description: `条目《${item.title}》包含 ${item.links.length} 个失效链接：${item.links.slice(0, 6).join('、')}${item.links.length > 6 ? ' 等' : ''}`,
       suggestion: '优先补齐高频概念条目，或删除这些无效双链',
+      details: item.links,
     }));
   }
 
@@ -139,6 +140,7 @@ export class LintChecker {
       severity: 'high' as const,
       description: `发现 ${items.length} 个重复标题条目：${items.map(doc => this.getDocDisplayTitle(doc)).join(' / ')}`,
       suggestion: '确认这些条目是否应合并为同一知识实体，避免重复 ingest 持续堆积',
+      details: items.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
     }));
   }
 
@@ -185,6 +187,7 @@ export class LintChecker {
         severity: 'high',
         description: `发现 ${highPairs.length} 组高相似标题（>=90%），例如：《${this.getDocDisplayTitle(highPairs[0].a)}》 / 《${this.getDocDisplayTitle(highPairs[0].b)}》`,
         suggestion: '优先检查这些条目是否为重复 ingest，必要时建立合并规则',
+        details: highPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)} (${Math.round(pair.similarity * 100)}%)`),
       });
     }
 
@@ -194,6 +197,7 @@ export class LintChecker {
         severity: 'medium',
         description: `发现 ${mediumPairs.length} 组中度相似标题（80%~90%），例如：《${this.getDocDisplayTitle(mediumPairs[0].a)}》 / 《${this.getDocDisplayTitle(mediumPairs[0].b)}》`,
         suggestion: '人工确认这些条目是否需要合并，或明确区分它们的概念边界',
+        details: mediumPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)} (${Math.round(pair.similarity * 100)}%)`),
       });
     }
 
@@ -230,6 +234,7 @@ export class LintChecker {
       severity: 'medium',
       description: `发现 ${orphanNotes.length} 个孤立 Note，例如：《${this.getDocDisplayTitle(orphanNotes[0])}》`,
       suggestion: '优先为这些 Note 建立 Concept 关联，否则后续 Query 路由会越来越分裂',
+      details: orphanNotes.slice(0, 50).map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
     }];
   }
 

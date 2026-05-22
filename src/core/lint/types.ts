@@ -17,4 +17,5 @@ export interface LintIssue {
   description: string;
   suggestion: string;
   document?: string;
+  details?: string[];
 }
