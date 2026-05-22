@@ -77,6 +77,7 @@ const useStore = create((set, get) => ({
   toast: null, // { type: 'success'|'error'|'info', title: string, message?: string }
 
   showToast: (type, title, message) => {
+    console.log('showToast called:', { type, title, message });
     set({ toast: { type, title, message } });
     // Auto dismiss after 4 seconds
     setTimeout(() => {

@@ -29,139 +29,173 @@ const NAV_ITEMS: NavItem[] = [
 export default function App() {
   const { config, loadConfig, toast, hideToast } = useStore();
 
+  // Play notification sound
+  useEffect(() => {
+    if (toast && config?.notifications?.sound !== false) {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = toast.type === 'success' ? 800 : toast.type === 'error' ? 400 : 600;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    }
+  }, [toast, config]);
+
   useEffect(() => {
     loadConfig();
   }, []);
 
   return (
-    <BrowserRouter>
-      <div className="app-shell">
-        {/* Header */}
-        <header className="app-header">
-          <span className="logo">🧠 Karpathy LLM Wiki</span>
-          <span className="subtitle">本地 AI 知识库管理系统</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>v0.1.0 · 2026-04-16 13:37:48</span>
-            <StatusIndicator />
-          </div>
-        </header>
-
-        {/* Toast Notification */}
-        {toast && (
+    <>
+      {/* Toast Notification - Codex Style */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'auto',
+            outline: '1px solid red',
+          }}
+          onClick={hideToast}
+        >
           <div
-            className="toast"
             style={{
-              position: 'fixed',
-              top: 24,
-              right: 24,
-              zIndex: 9999,
-              background: toast.type === 'success' ? 'var(--bg-green)' :
-                toast.type === 'error' ? 'var(--bg-red)' : 'var(--bg-blue)',
-              color: toast.type === 'success' ? 'var(--text-green)' :
-                toast.type === 'error' ? 'var(--text-red)' : 'var(--text-blue)',
-              padding: '16px 20px',
-              borderRadius: 8,
-              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-              maxWidth: 400,
-              animation: 'slideIn 0.3s ease-out'
+              background: '#1a1a2e',
+              border: `3px solid ${toast.type === 'success' ? '#4ade80' :
+                toast.type === 'error' ? '#f87171' : '#60a5fa'}`,
+              borderRadius: 16,
+              padding: '40px',
+              minWidth: 350,
+              maxWidth: 500,
+              textAlign: 'center',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+              pointerEvents: 'auto',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{toast.title}</div>
-                {toast.message && (
-                  <div style={{ fontSize: 12, marginTop: 4, opacity: 0.85 }}>{toast.message}</div>
-                )}
-              </div>
-              <button
-                onClick={hideToast}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  opacity: 0.6,
-                  marginLeft: 16,
-                  color: 'inherit'
-                }}
-              >×</button>
+            <div style={{ fontSize: 64, marginBottom: 20 }}>
+              {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}
             </div>
+            <div style={{ fontWeight: 700, fontSize: 24, color: '#ffffff', marginBottom: 16 }}>
+              {toast.title}
+            </div>
+            {toast.message && (
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)', marginBottom: 24 }}>
+                {toast.message}
+              </div>
+            )}
+            <button
+              onClick={hideToast}
+              style={{
+                background: toast.type === 'success' ? '#4ade80' :
+                  toast.type === 'error' ? '#f87171' : '#60a5fa',
+                border: 'none',
+                borderRadius: 8,
+                padding: '14px 40px',
+                color: '#000000',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              好的
+            </button>
           </div>
-        )}
-
-        <div className="app-body">
-          {/* Sidebar */}
-          <nav className="sidebar">
-            <div className="sidebar-section">
-              <div className="sidebar-title">导航</div>
-              {NAV_ITEMS.map(item => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
-                >
-                  <span className="icon">{item.icon}</span>
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-
-            {/* Project Status */}
-            <div className="sidebar-section">
-              <div className="sidebar-title">项目状态</div>
-              <div style={{ padding: '4px 16px' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                  项目目录
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                  {config.projectRoot || '未设置'}
-                </div>
-              </div>
-              <div style={{ padding: '4px 16px' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                  AI 后端
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {config.llm?.backend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
-                </div>
-              </div>
-            </div>
-          </nav>
-
-          {/* Main Content */}
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/setup" element={<SetupPage />} />
-              <Route path="/ingest" element={<IngestPage />} />
-              <Route path="/query" element={<QueryPage />} />
-              <Route path="/lint" element={<LintPage />} />
-              <Route path="/config" element={<ConfigPage />} />
-            </Routes>
-          </main>
         </div>
-      </div>
-    </BrowserRouter>
-  );
+      )}
+
+      <BrowserRouter>
+        <div className="app-shell">
+
+          <div className="app-body">
+            {/* Sidebar */}
+            <nav className="sidebar">
+              <div className="sidebar-section">
+                <div className="sidebar-title">导航</div>
+                {NAV_ITEMS.map(item => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
+                  >
+                    <span className="icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+
+              {/* Project Status */}
+              <div className="sidebar-section">
+                <div className="sidebar-title">项目状态</div>
+                <div style={{ padding: '4px 16px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                    项目目录
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                    {config.projectRoot || '未设置'}
+                  </div>
+                </div>
+                <div style={{ padding: '4px 16px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                    AI 后端
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    {config.llm?.backend === 'ollama' ? '🦙 Ollama' : '💡 LM Studio'}
+                  </div>
+                </div>
+              </div>
+            </nav>
+
+            {/* Main Content */}
+            <main className="main-content">
+              <Routes>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/setup" element={<SetupPage />} />
+                <Route path="/ingest" element={<IngestPage />} />
+                <Route path="/query" element={<QueryPage />} />
+                <Route path="/lint" element={<LintPage />} />
+                <Route path="/config" element={<ConfigPage />} />
+              </Routes>
+            </main>
+          </div>
+        </div>
+      </BrowserRouter>
+      );
 }
 
-function StatusIndicator() {
-  const { config } = useStore();
+      function StatusIndicator() {
+  const {config} = useStore();
 
   const checkBackend = async () => {
     if (!window.electronAPI) return 'no-api';
-    try {
-      const res = await fetch(`${config.llm?.url || 'http://localhost:11434'}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      try {
+      const res = await fetch(`${config.llm?.url || 'http://localhost:11434'}/api/tags`, {signal: AbortSignal.timeout(3000) });
       return res.ok ? 'online' : 'offline';
     } catch {
       return 'offline';
     }
   };
 
-  return (
-    <span className="status-badge green">
-      <span className="dot" />
-      系统就绪
-    </span>
-  );
+      return (
+      <span className="status-badge green">
+        <span className="dot" />
+        系统就绪
+      </span>
+      );
 }

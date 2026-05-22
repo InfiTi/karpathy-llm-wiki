@@ -357,6 +357,11 @@ html, body, #root {
 
 @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(20px); } }
+@keyframes toastPop { 
+  0% { opacity: 0; transform: scale(0.8) translateY(20px); } 
+  70% { transform: scale(1.05) translateY(-5px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); } 
+}
 .slide-in { animation: slideIn 0.3s ease-out; }
 
 /* Toast Colors */
