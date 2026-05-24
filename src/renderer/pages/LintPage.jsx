@@ -110,6 +110,12 @@ export default function LintPage() {
     );
   };
 
+  const focusIssueType = (type, severity = 'all') => {
+    setTypeFilter(type);
+    setSeverityFilter(severity);
+    setExpandedKeys({});
+  };
+
   return (
     <div>
       <h1 style={{ fontSize: 24, marginBottom: 8 }}>🔍 Lint - 知识库检查</h1>
@@ -192,11 +198,22 @@ export default function LintPage() {
                   <div style={{ display: 'grid', gap: 10 }}>
                     {governance.topIssueTypes.map(item => (
                       <div key={item.type} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                        <div style={{ fontWeight: 600 }}>
-                          [{item.type}] {item.description}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                          命中：{item.count} · 建议：{item.suggestion}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>
+                              [{item.type}] {item.description}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              命中：{item.count} · 建议：{item.suggestion}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: '4px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                            onClick={() => focusIssueType(item.type, item.severity)}
+                          >
+                            定位问题
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -210,9 +227,20 @@ export default function LintPage() {
                   <div style={{ display: 'grid', gap: 10 }}>
                     {governance.recommendedActions.map(action => (
                       <div key={action.type} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                        <div style={{ fontWeight: 600 }}>{action.action}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                          类型：{action.type} · 命中：{action.count} · 文档：{action.documents.slice(0, 5).join('、')}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{action.action}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              类型：{action.type} · 命中：{action.count} · 文档：{action.documents.slice(0, 5).join('、')}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: '4px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                            onClick={() => focusIssueType(action.type, action.severity)}
+                          >
+                            查看对应问题
+                          </button>
                         </div>
                       </div>
                     ))}
