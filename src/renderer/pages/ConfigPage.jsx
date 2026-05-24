@@ -58,13 +58,6 @@ export default function ConfigPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const fields = [
-    { key: 'projectRoot', label: '项目根目录', type: 'dir' },
-    { key: 'rawSourcesDir', label: '原始文档目录', type: 'text', default: 'raw_sources' },
-    { key: 'wikiDir', label: 'Wiki 目录', type: 'text', default: 'wiki' },
-    { key: 'port', label: '服务端口', type: 'number', default: '3001' },
-  ];
-
   const llmFields = [
     { key: 'url', label: 'Service URL', type: 'text', default: 'http://localhost:11434' },
     { key: 'model', label: 'Default Model', type: 'text', placeholder: 'e.g. qwen3.5:latest' },
@@ -77,28 +70,46 @@ export default function ConfigPage() {
       {/* Project Config */}
       <div className="card">
         <div className="card-title">📂 项目配置</div>
-        {fields.map(f => (
-          <div className="form-group" key={f.key}>
-            <label className="form-label">{f.label}</label>
-            <div className="flex gap-8">
-              <input
-                className="input"
-                type={f.type === 'number' ? 'number' : 'text'}
-                value={config[f.key] || ''}
-                placeholder={f.default}
-                onChange={e => setConfig(f.key, f.type === 'number' ? parseInt(e.target.value) : e.target.value)}
-                style={{ flex: 1 }}
-              />
-              {f.type === 'dir' && (
-                <button className="btn btn-secondary" onClick={async () => {
-                  if (!window.electronAPI) return;
-                  const dir = await window.electronAPI.selectDirectory();
-                  if (dir) setConfig(f.key, dir);
-                }}>浏览</button>
-              )}
-            </div>
+        <div className="form-group">
+          <label className="form-label">项目根目录</label>
+          <div className="flex gap-8">
+            <input
+              className="input"
+              type="text"
+              value={config.projectRoot || ''}
+              placeholder="选择项目目录"
+              onChange={e => setConfig('projectRoot', e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-secondary" onClick={async () => {
+              if (!window.electronAPI) return;
+              const dir = await window.electronAPI.selectDirectory();
+              if (dir) setConfig('projectRoot', dir);
+            }}>浏览</button>
           </div>
-        ))}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Wiki 目录</label>
+          <input
+            className="input"
+            type="text"
+            value={config.wiki?.directory || ''}
+            placeholder="wiki"
+            onChange={e => setConfig('wiki', { ...config.wiki, directory: e.target.value })}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">原始文档目录</label>
+          <input
+            className="input"
+            type="text"
+            value={config.wiki?.rawDirectory || ''}
+            placeholder="raw_sources"
+            onChange={e => setConfig('wiki', { ...config.wiki, rawDirectory: e.target.value })}
+          />
+        </div>
       </div>
 
       {/* LLM Config */}

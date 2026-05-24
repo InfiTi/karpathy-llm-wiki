@@ -9,7 +9,7 @@ const useStore = create((set, get) => ({
   loadConfig: async () => {
     if (!window.electronAPI) return;
     const cfg = await window.electronAPI.getAllConfig();
-    set({ config: cfg, projectRoot: cfg.projectRoot || '', wikiDir: cfg.wikiDir || '' });
+    set({ config: cfg, projectRoot: cfg.projectRoot || '', wikiDir: cfg.wiki?.directory || '' });
   },
 
   setConfig: async (key, value) => {

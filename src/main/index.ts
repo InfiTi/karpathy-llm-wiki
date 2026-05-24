@@ -90,7 +90,8 @@ let configData: ConfigData = {
   }
 };
 
-const configPath = path.join(__dirname, '..', '..', 'config.json');
+const configPath = path.join(process.cwd(), 'config.json');
+const legacyConfigPath = path.join(__dirname, '..', '..', 'config.json');
 
 // Load config from file
 function loadConfig() {
@@ -98,6 +99,10 @@ function loadConfig() {
     if (fs.existsSync(configPath)) {
       const data = fs.readFileSync(configPath, 'utf8');
       configData = { ...configData, ...JSON.parse(data) };
+    } else if (fs.existsSync(legacyConfigPath)) {
+      const data = fs.readFileSync(legacyConfigPath, 'utf8');
+      configData = { ...configData, ...JSON.parse(data) };
+      saveConfig();
     }
   } catch (err: any) {
     console.error('Error loading config:', err.message);
