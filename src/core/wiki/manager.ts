@@ -36,6 +36,7 @@ export class WikiManager {
         title: doc.title,
         filePath,
         fileName: file,
+        rawFile: doc.metadata.raw_file || '',
         type: doc.metadata.type,
         status: doc.metadata.status,
         sourceType: doc.metadata.source_type,

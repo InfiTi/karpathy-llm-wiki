@@ -100,6 +100,8 @@ export class LintChecker {
     const emptyIssues = this.checkEmptyDocuments(docs);
     const duplicateIssues = this.buildDuplicateTitleIssues(duplicateGroups);
     const similarIssues = this.checkSimilarTitles(docs, duplicateGroups);
+    const duplicateSourceIssues = this.checkDuplicateRawSources(docs);
+    const duplicateContentIssues = this.checkDuplicateContent(docs);
     const orphanIssues = this.checkOrphanNotes(docs);
     const routeIssues = this.checkRouteIntegrity(docs);
 
@@ -108,6 +110,8 @@ export class LintChecker {
       ...emptyIssues,
       ...duplicateIssues,
       ...similarIssues,
+      ...duplicateSourceIssues,
+      ...duplicateContentIssues,
       ...orphanIssues,
       ...routeIssues,
     ];
@@ -339,6 +343,68 @@ export class LintChecker {
     }];
   }
 
+  private checkDuplicateRawSources(docs: WikiDocumentInfo[]): LintResult['issues'] {
+    const groups = new Map<string, WikiDocumentInfo[]>();
+
+    for (const doc of docs) {
+      const rawFile = this.normalizeRawFile(doc.rawFile);
+      if (!rawFile) continue;
+
+      if (!groups.has(rawFile)) {
+        groups.set(rawFile, []);
+      }
+      groups.get(rawFile)!.push(doc);
+    }
+
+    return [...groups.entries()]
+      .filter(([, items]) => items.length > 1)
+      .map(([rawFile, items]) => ({
+        type: 'duplicate_raw_source_group',
+        severity: 'high' as const,
+        description: `发现 ${items.length} 个条目指向同一个 raw source：${rawFile}`,
+        suggestion: '优先确认这些条目是否是同一次源材料被重复 ingest，再决定保留主条目还是合并内容',
+        count: items.length,
+        affectedDocuments: items.map(doc => this.getDocDisplayTitle(doc)),
+        actionItems: [
+          '回溯同一 raw source 的 ingest 过程，确认是否重复生成',
+          '保留唯一主条目，其余条目合并、删除或改为别名',
+        ],
+        evidence: items.map(doc => `${doc.fileName} -> ${rawFile}`),
+        details: items.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName} -> ${rawFile}`),
+      }));
+  }
+
+  private checkDuplicateContent(docs: WikiDocumentInfo[]): LintResult['issues'] {
+    const groups = new Map<string, WikiDocumentInfo[]>();
+
+    for (const doc of docs) {
+      const normalizedContent = this.normalizeContentForComparison(doc.content || '');
+      if (!normalizedContent || normalizedContent.length < 80) continue;
+
+      if (!groups.has(normalizedContent)) {
+        groups.set(normalizedContent, []);
+      }
+      groups.get(normalizedContent)!.push(doc);
+    }
+
+    return [...groups.values()]
+      .filter(items => items.length > 1)
+      .map(items => ({
+        type: 'duplicate_content_group',
+        severity: 'high' as const,
+        description: `发现 ${items.length} 个正文完全重复的条目：${items.map(doc => this.getDocDisplayTitle(doc)).join(' / ')}`,
+        suggestion: '优先确认是否为重复 ingest 或拆分失败，再决定合并到唯一主条目',
+        count: items.length,
+        affectedDocuments: items.map(doc => this.getDocDisplayTitle(doc)),
+        actionItems: [
+          '先保留信息最完整的版本作为主条目',
+          '其余重复正文条目合并、删除或仅保留指向主条目的说明',
+        ],
+        evidence: items.map(doc => doc.fileName),
+        details: items.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
+      }));
+  }
+
   private checkRouteIntegrity(docs: WikiDocumentInfo[]): LintResult['issues'] {
     const routeOccurrences = new Map<string, RouteOccurrence[]>();
 
@@ -444,6 +510,24 @@ export class LintChecker {
     return [...new Set(pairs.flatMap(pair => [this.getDocDisplayTitle(pair.a), this.getDocDisplayTitle(pair.b)]))].slice(0, 20);
   }
 
+  private normalizeRawFile(rawFile: string): string {
+    return this.cleanDisplayText(rawFile || '')
+      .replace(/^\.\.\/raw\//i, '')
+      .replace(/^raw\//i, '')
+      .trim();
+  }
+
+  private normalizeContentForComparison(content: string): string {
+    return (content || '')
+      .replace(/^#\s+.+$/gm, '')
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
   private calculateScore(issues: LintResult['issues']): number {
     let score = 100;
 
@@ -468,6 +552,8 @@ export class LintChecker {
     const priorities: string[] = [];
 
     const duplicateIssue = issues.find(issue => issue.type === 'duplicate_title_group');
+    const duplicateSourceIssue = issues.find(issue => issue.type === 'duplicate_raw_source_group');
+    const duplicateContentIssue = issues.find(issue => issue.type === 'duplicate_content_group');
     const routeConflictIssue = issues.find(issue => issue.type === 'routing_conflict_group');
     const similarIssue = issues.find(issue => issue.type === 'similar_title_cluster' && issue.severity === 'high');
     const brokenLinkIssue = issues.find(issue => issue.type === 'broken_link_group');
@@ -476,6 +562,14 @@ export class LintChecker {
 
     if (duplicateIssue) {
       priorities.push('先处理重复标题组，避免重复 ingest 持续放大知识分裂。');
+    }
+
+    if (duplicateSourceIssue) {
+      priorities.push('尽快处理同源重复 ingest，避免同一 raw source 在库里持续派生出多个竞争条目。');
+    }
+
+    if (duplicateContentIssue) {
+      priorities.push('随后清理正文完全重复的条目，优先保留信息最完整的主版本。');
     }
 
     if (routeConflictIssue) {

@@ -2,6 +2,7 @@ export interface WikiDocumentInfo {
   title: string;
   filePath: string;
   fileName: string;
+  rawFile: string;
   type: string;
   status: string;
   sourceType: string;
