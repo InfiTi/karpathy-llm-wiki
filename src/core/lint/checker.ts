@@ -10,6 +10,12 @@ type SimilarPair = {
   similarity: number;
 };
 
+type RouteOccurrence = {
+  doc: WikiDocumentInfo;
+  value: string;
+  source: 'title' | 'entity';
+};
+
 type GovernanceAction = {
   type: string;
   severity: 'high' | 'medium' | 'low';
@@ -95,6 +101,7 @@ export class LintChecker {
     const duplicateIssues = this.buildDuplicateTitleIssues(duplicateGroups);
     const similarIssues = this.checkSimilarTitles(docs, duplicateGroups);
     const orphanIssues = this.checkOrphanNotes(docs);
+    const routeIssues = this.checkRouteIntegrity(docs);
 
     const allIssues = [
       ...brokenLinkIssues,
@@ -102,6 +109,7 @@ export class LintChecker {
       ...duplicateIssues,
       ...similarIssues,
       ...orphanIssues,
+      ...routeIssues,
     ];
 
     for (const issue of allIssues as GovernanceIssue[]) {
@@ -331,6 +339,107 @@ export class LintChecker {
     }];
   }
 
+  private checkRouteIntegrity(docs: WikiDocumentInfo[]): LintResult['issues'] {
+    const routeOccurrences = new Map<string, RouteOccurrence[]>();
+
+    for (const doc of docs) {
+      const routeNames = [this.getDocDisplayTitle(doc), ...(doc.entities || [])]
+        .map(name => this.cleanDisplayText(name))
+        .filter(Boolean);
+
+      for (const name of routeNames) {
+        const key = this.normalizeForComparison(name);
+        if (!key) continue;
+
+        if (!routeOccurrences.has(key)) {
+          routeOccurrences.set(key, []);
+        }
+
+        routeOccurrences.get(key)!.push({
+          doc,
+          value: name,
+          source: name === this.getDocDisplayTitle(doc) ? 'title' : 'entity',
+        });
+      }
+    }
+
+    const issues: LintResult['issues'] = [];
+    const conflictingGroups = [...routeOccurrences.entries()]
+      .map(([key, occurrences]) => ({
+        key,
+        occurrences,
+        fileCount: new Set(occurrences.map(item => item.doc.fileName)).size,
+      }))
+      .filter(group => group.fileCount > 1);
+
+    if (conflictingGroups.length > 0) {
+      const example = conflictingGroups[0];
+      const exampleDocs = [...new Set(
+        example.occurrences.map(item => `《${this.getDocDisplayTitle(item.doc)}》(${item.source}:${item.value})`)
+      )].join(' / ');
+
+      issues.push({
+        type: 'routing_conflict_group',
+        severity: 'high',
+        description: `发现 ${conflictingGroups.length} 组路由键冲突，例如：${exampleDocs}`,
+        suggestion: '确保每个可路由键只指向唯一主条目，避免 Query 或后续 entities_map 路由发生歧义',
+        count: conflictingGroups.length,
+        affectedDocuments: [...new Set(
+          conflictingGroups.flatMap(group => group.occurrences.map(item => this.getDocDisplayTitle(item.doc)))
+        )].slice(0, 50),
+        actionItems: [
+          '为冲突键只保留一个主条目，其余条目改为别名、重定向或合并',
+          '检查 entities 字段是否错误承担了主路由键职责',
+        ],
+        evidence: conflictingGroups.slice(0, 20).map(group => group.key),
+        details: conflictingGroups.slice(0, 20).map(group => {
+          const targets = [...new Set(
+            group.occurrences.map(item => `${this.getDocDisplayTitle(item.doc)} -> ${item.source}:${item.value}`)
+          )].join(' / ');
+          return `${group.key} => ${targets}`;
+        }),
+      });
+    }
+
+    const routableKeys = new Set(routeOccurrences.keys());
+    const unresolvedEntities = docs
+      .map(doc => {
+        const missing = [...new Set((doc.entities || [])
+          .map(name => this.cleanDisplayText(name))
+          .filter(Boolean)
+          .filter(name => {
+            const key = this.normalizeForComparison(name);
+            return key && !routableKeys.has(key);
+          }))];
+
+        return {
+          doc,
+          missing,
+        };
+      })
+      .filter(item => item.missing.length > 0);
+
+    if (unresolvedEntities.length > 0) {
+      const example = unresolvedEntities[0];
+      issues.push({
+        type: 'unresolvable_entity_group',
+        severity: 'medium',
+        description: `发现 ${unresolvedEntities.length} 个条目的 entities 无法命中现有路由，例如：《${this.getDocDisplayTitle(example.doc)}》`,
+        suggestion: '补齐缺失概念页，或把 entities 改成现有稳定路由键，避免 Query 后续接入 entities_map 时命中失败',
+        count: unresolvedEntities.reduce((sum, item) => sum + item.missing.length, 0),
+        affectedDocuments: unresolvedEntities.map(item => this.getDocDisplayTitle(item.doc)).slice(0, 50),
+        actionItems: [
+          '优先把 entities 字段改为可稳定命中的主概念键',
+          '若对应概念应存在，则补建条目并进入 index 路由表',
+        ],
+        evidence: unresolvedEntities.slice(0, 20).flatMap(item => item.missing.map(name => `${this.getDocDisplayTitle(item.doc)} -> ${name}`)),
+        details: unresolvedEntities.slice(0, 20).map(item => `${this.getDocDisplayTitle(item.doc)} -> ${item.missing.join('、')}`),
+      });
+    }
+
+    return issues;
+  }
+
   private collectPairDocuments(pairs: SimilarPair[]): string[] {
     return [...new Set(pairs.flatMap(pair => [this.getDocDisplayTitle(pair.a), this.getDocDisplayTitle(pair.b)]))].slice(0, 20);
   }
@@ -359,16 +468,26 @@ export class LintChecker {
     const priorities: string[] = [];
 
     const duplicateIssue = issues.find(issue => issue.type === 'duplicate_title_group');
+    const routeConflictIssue = issues.find(issue => issue.type === 'routing_conflict_group');
     const similarIssue = issues.find(issue => issue.type === 'similar_title_cluster' && issue.severity === 'high');
     const brokenLinkIssue = issues.find(issue => issue.type === 'broken_link_group');
     const orphanIssue = issues.find(issue => issue.type === 'orphan_note_group');
+    const unresolvedEntityIssue = issues.find(issue => issue.type === 'unresolvable_entity_group');
 
     if (duplicateIssue) {
       priorities.push('先处理重复标题组，避免重复 ingest 持续放大知识分裂。');
     }
 
+    if (routeConflictIssue) {
+      priorities.push('尽快处理路由键冲突，确保同一个 route key 只指向唯一主条目。');
+    }
+
     if (similarIssue) {
       priorities.push('再处理高相似标题簇，尽快确认哪些条目应合并为同一实体。');
+    }
+
+    if (unresolvedEntityIssue) {
+      priorities.push('随后清理无法命中的 entities，避免后续 Query 接入路由表时出现空跳转。');
     }
 
     if (brokenLinkIssue) {
