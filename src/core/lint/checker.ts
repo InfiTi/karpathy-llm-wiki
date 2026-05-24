@@ -10,6 +10,26 @@ type SimilarPair = {
   similarity: number;
 };
 
+type GovernanceAction = {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  count: number;
+  action: string;
+  documents: string[];
+};
+
+type GovernanceIssue = {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  description: string;
+  suggestion: string;
+  count: number;
+  affectedDocuments: string[];
+  actionItems: string[];
+  evidence: string[];
+  details: string[];
+};
+
 export class LintChecker {
   private wikiManager: WikiManager;
   private outputsDir: string;
@@ -28,9 +48,10 @@ export class LintChecker {
     try {
       const docs = await this.wikiManager.listDocuments();
       const filteredDocs = docs.filter(doc => !this.isIndexDocument(doc));
-      const issues = this.runRuleChecks(filteredDocs);
+      const { issues, governanceActions } = this.runRuleChecks(filteredDocs);
       const score = this.calculateScore(issues);
       const summary = this.buildSummary(filteredDocs, issues);
+      const governance = this.buildGovernance(filteredDocs, issues, governanceActions);
 
       await this.generateReport(score, issues, summary);
 
@@ -38,6 +59,8 @@ export class LintChecker {
         score,
         issues,
         summary,
+        priorities: this.buildPriorities(issues),
+        governance,
       };
     } catch (error) {
       console.error('Lint error:', error);
@@ -50,20 +73,50 @@ export class LintChecker {
           suggestion: '检查项目路径、文档读写权限和规则实现',
         }],
         summary: 'Lint 执行失败',
+        priorities: ['先修复 Lint 运行错误，再继续做结构治理。'],
+        governance: {
+          totalDocuments: 0,
+          issueCount: 1,
+          severityCounts: { high: 1, medium: 0, low: 0 },
+          topIssueTypes: [],
+          topDocuments: [],
+          recommendedActions: [],
+        },
       };
     }
   }
 
-  private runRuleChecks(docs: WikiDocumentInfo[]): LintResult['issues'] {
+  private runRuleChecks(docs: WikiDocumentInfo[]): { issues: LintResult['issues']; governanceActions: GovernanceAction[] } {
     const duplicateGroups = this.findDuplicateTitleGroups(docs);
+    const governanceActions: GovernanceAction[] = [];
 
-    return [
-      ...this.checkBrokenLinks(docs),
-      ...this.checkEmptyDocuments(docs),
-      ...this.buildDuplicateTitleIssues(duplicateGroups),
-      ...this.checkSimilarTitles(docs, duplicateGroups),
-      ...this.checkOrphanNotes(docs),
+    const brokenLinkIssues = this.checkBrokenLinks(docs);
+    const emptyIssues = this.checkEmptyDocuments(docs);
+    const duplicateIssues = this.buildDuplicateTitleIssues(duplicateGroups);
+    const similarIssues = this.checkSimilarTitles(docs, duplicateGroups);
+    const orphanIssues = this.checkOrphanNotes(docs);
+
+    const allIssues = [
+      ...brokenLinkIssues,
+      ...emptyIssues,
+      ...duplicateIssues,
+      ...similarIssues,
+      ...orphanIssues,
     ];
+
+    for (const issue of allIssues as GovernanceIssue[]) {
+      if (issue.actionItems?.length > 0) {
+        governanceActions.push({
+          type: issue.type,
+          severity: issue.severity,
+          count: issue.count,
+          action: issue.actionItems[0],
+          documents: issue.affectedDocuments.slice(0, 10),
+        });
+      }
+    }
+
+    return { issues: allIssues, governanceActions };
   }
 
   private checkBrokenLinks(docs: WikiDocumentInfo[]): LintResult['issues'] {
@@ -103,6 +156,13 @@ export class LintChecker {
       severity: 'medium' as const,
       description: `条目《${item.title}》包含 ${item.links.length} 个失效链接：${item.links.slice(0, 6).join('、')}${item.links.length > 6 ? ' 等' : ''}`,
       suggestion: '优先补齐高频概念条目，或删除这些无效双链',
+      count: item.links.length,
+      affectedDocuments: [item.title],
+      actionItems: [
+        `检查《${item.title}》中失效链接对应的概念是否应补建或改名`,
+        '优先修复被多处引用的高频概念节点',
+      ],
+      evidence: item.links,
       details: item.links,
     }));
   }
@@ -115,6 +175,11 @@ export class LintChecker {
         severity: 'low' as const,
         description: `条目《${this.getDocDisplayTitle(doc)}》内容过短，可能是占位文档或抓取不完整`,
         suggestion: '补充正文内容，或确认该条目是否应该保留',
+        count: 1,
+        affectedDocuments: [this.getDocDisplayTitle(doc)],
+        actionItems: ['补充正文或删除占位条目'],
+        evidence: [doc.fileName],
+        details: [doc.fileName],
       }));
   }
 
@@ -140,6 +205,13 @@ export class LintChecker {
       severity: 'high' as const,
       description: `发现 ${items.length} 个重复标题条目：${items.map(doc => this.getDocDisplayTitle(doc)).join(' / ')}`,
       suggestion: '确认这些条目是否应合并为同一知识实体，避免重复 ingest 持续堆积',
+      count: items.length,
+      affectedDocuments: items.map(doc => this.getDocDisplayTitle(doc)),
+      actionItems: [
+        '优先保留唯一主条目，其余条目标记为别名或合并',
+        '回溯重复 ingest 来源并调整编译规则',
+      ],
+      evidence: items.map(doc => doc.fileName),
       details: items.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
     }));
   }
@@ -187,6 +259,13 @@ export class LintChecker {
         severity: 'high',
         description: `发现 ${highPairs.length} 组高相似标题（>=90%），例如：《${this.getDocDisplayTitle(highPairs[0].a)}》 / 《${this.getDocDisplayTitle(highPairs[0].b)}》`,
         suggestion: '优先检查这些条目是否为重复 ingest，必要时建立合并规则',
+        count: highPairs.length,
+        affectedDocuments: this.collectPairDocuments(highPairs),
+        actionItems: [
+          '先人工确认高相似组是否属于同一概念实体',
+          '必要时合并并建立重定向或别名',
+        ],
+        evidence: highPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)}`),
         details: highPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)} (${Math.round(pair.similarity * 100)}%)`),
       });
     }
@@ -197,6 +276,13 @@ export class LintChecker {
         severity: 'medium',
         description: `发现 ${mediumPairs.length} 组中度相似标题（80%~90%），例如：《${this.getDocDisplayTitle(mediumPairs[0].a)}》 / 《${this.getDocDisplayTitle(mediumPairs[0].b)}》`,
         suggestion: '人工确认这些条目是否需要合并，或明确区分它们的概念边界',
+        count: mediumPairs.length,
+        affectedDocuments: this.collectPairDocuments(mediumPairs),
+        actionItems: [
+          '检查命名是否只差修饰词或年份',
+          '若非同一实体，补充边界说明以减少误判',
+        ],
+        evidence: mediumPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)}`),
         details: mediumPairs.slice(0, 20).map(pair => `${this.getDocDisplayTitle(pair.a)} ↔ ${this.getDocDisplayTitle(pair.b)} (${Math.round(pair.similarity * 100)}%)`),
       });
     }
@@ -234,8 +320,19 @@ export class LintChecker {
       severity: 'medium',
       description: `发现 ${orphanNotes.length} 个孤立 Note，例如：《${this.getDocDisplayTitle(orphanNotes[0])}》`,
       suggestion: '优先为这些 Note 建立 Concept 关联，否则后续 Query 路由会越来越分裂',
+      count: orphanNotes.length,
+      affectedDocuments: orphanNotes.slice(0, 50).map(doc => this.getDocDisplayTitle(doc)),
+      actionItems: [
+        '为孤立 Note 添加 Concept 归属',
+        '补充链接到稳定的核心概念页',
+      ],
+      evidence: orphanNotes.slice(0, 50).map(doc => doc.fileName),
       details: orphanNotes.slice(0, 50).map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
     }];
+  }
+
+  private collectPairDocuments(pairs: SimilarPair[]): string[] {
+    return [...new Set(pairs.flatMap(pair => [this.getDocDisplayTitle(pair.a), this.getDocDisplayTitle(pair.b)]))].slice(0, 20);
   }
 
   private calculateScore(issues: LintResult['issues']): number {
@@ -256,6 +353,121 @@ export class LintChecker {
     const low = issues.filter(issue => issue.severity === 'low').length;
 
     return `本次共扫描 ${docs.length} 个条目，发现 ${issues.length} 类问题（高优先级 ${high}，中优先级 ${medium}，低优先级 ${low}）。`;
+  }
+
+  private buildPriorities(issues: LintResult['issues']): string[] {
+    const priorities: string[] = [];
+
+    const duplicateIssue = issues.find(issue => issue.type === 'duplicate_title_group');
+    const similarIssue = issues.find(issue => issue.type === 'similar_title_cluster' && issue.severity === 'high');
+    const brokenLinkIssue = issues.find(issue => issue.type === 'broken_link_group');
+    const orphanIssue = issues.find(issue => issue.type === 'orphan_note_group');
+
+    if (duplicateIssue) {
+      priorities.push('先处理重复标题组，避免重复 ingest 持续放大知识分裂。');
+    }
+
+    if (similarIssue) {
+      priorities.push('再处理高相似标题簇，尽快确认哪些条目应合并为同一实体。');
+    }
+
+    if (brokenLinkIssue) {
+      priorities.push('随后处理坏链最密集的文档，优先补齐高频概念节点。');
+    }
+
+    if (orphanIssue) {
+      priorities.push('最后处理孤立 Note，为它们补充 Concept 归属，提升后续 Query 路由稳定性。');
+    }
+
+    if (priorities.length === 0) {
+      priorities.push('当前没有明显结构治理优先项，可进入下一阶段优化。');
+    }
+
+    return priorities;
+  }
+
+  private buildGovernance(
+    docs: WikiDocumentInfo[],
+    issues: LintResult['issues'],
+    governanceActions: GovernanceAction[]
+  ): NonNullable<LintResult['governance']> {
+    const severityCounts = {
+      high: issues.filter(issue => issue.severity === 'high').length,
+      medium: issues.filter(issue => issue.severity === 'medium').length,
+      low: issues.filter(issue => issue.severity === 'low').length,
+    };
+
+    const issueGroups = new Map<string, { issue: LintResult['issues'][number]; count: number }>();
+    for (const issue of issues) {
+      const current = issueGroups.get(issue.type);
+      issueGroups.set(issue.type, {
+        issue,
+        count: (current?.count || 0) + (issue.count || issue.details?.length || 1),
+      });
+    }
+
+    const topIssueTypes = [...issueGroups.entries()]
+      .map(([type, data]) => ({
+        type,
+        severity: data.issue.severity,
+        count: data.count,
+        description: data.issue.description,
+        suggestion: data.issue.suggestion,
+      }))
+      .sort((a, b) => {
+        const severityRank = { high: 3, medium: 2, low: 1 };
+        const severityDiff = severityRank[b.severity] - severityRank[a.severity];
+        if (severityDiff !== 0) return severityDiff;
+        return b.count - a.count;
+      })
+      .slice(0, 6);
+
+    const documentIssueMap = new Map<string, { fileName: string; title: string; issueTypes: Set<string> }>();
+    for (const issue of issues as GovernanceIssue[]) {
+      for (const docName of issue.affectedDocuments || []) {
+        const key = docName.toLowerCase();
+        if (!documentIssueMap.has(key)) {
+          documentIssueMap.set(key, { fileName: docName, title: docName, issueTypes: new Set<string>() });
+        }
+        documentIssueMap.get(key)!.issueTypes.add(issue.type);
+      }
+    }
+
+    const topDocuments = [...documentIssueMap.values()]
+      .map(item => ({
+        fileName: item.fileName,
+        title: item.title,
+        issueCount: item.issueTypes.size,
+        issueTypes: [...item.issueTypes],
+      }))
+      .sort((a, b) => b.issueCount - a.issueCount)
+      .slice(0, 10);
+
+    const actionMap = new Map<string, GovernanceAction>();
+    for (const action of governanceActions) {
+      const existing = actionMap.get(action.type);
+      if (!existing || existing.count < action.count) {
+        actionMap.set(action.type, action);
+      }
+    }
+
+    const recommendedActions = [...actionMap.values()]
+      .sort((a, b) => {
+        const severityRank = { high: 3, medium: 2, low: 1 };
+        const severityDiff = severityRank[b.severity] - severityRank[a.severity];
+        if (severityDiff !== 0) return severityDiff;
+        return b.count - a.count;
+      })
+      .slice(0, 6);
+
+    return {
+      totalDocuments: docs.length,
+      issueCount: issues.length,
+      severityCounts,
+      topIssueTypes,
+      topDocuments,
+      recommendedActions,
+    };
   }
 
   private async generateReport(score: number, issues: LintResult['issues'], summary: string): Promise<string> {

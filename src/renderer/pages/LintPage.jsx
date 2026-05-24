@@ -74,6 +74,8 @@ export default function LintPage() {
     return acc;
   }, {});
 
+  const governance = result?.governance;
+
   const summaryCounts = useMemo(() => {
     return {
       high: allIssues.filter(issue => issue.severity === 'high').length,
@@ -174,6 +176,81 @@ export default function LintPage() {
             </div>
           </div>
 
+          {governance && (
+            <div className="card mt-16">
+              <div className="card-title">结构治理面板</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
+                <StatTile label="扫描条目" value={governance.totalDocuments} />
+                <StatTile label="问题类型" value={governance.issueCount} />
+                <StatTile label="高优先级" value={governance.severityCounts.high} color="var(--accent-red)" />
+                <StatTile label="中优先级" value={governance.severityCounts.medium} color="var(--accent-yellow)" />
+              </div>
+
+              {governance.topIssueTypes.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>高频问题</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {governance.topIssueTypes.map(item => (
+                      <div key={item.type} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600 }}>
+                          [{item.type}] {item.description}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                          命中：{item.count} · 建议：{item.suggestion}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {governance.recommendedActions.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>治理动作</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {governance.recommendedActions.map(action => (
+                      <div key={action.type} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600 }}>{action.action}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                          类型：{action.type} · 命中：{action.count} · 文档：{action.documents.slice(0, 5).join('、')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {governance.topDocuments.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>优先处理文档</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {governance.topDocuments.map(doc => (
+                      <div key={doc.fileName} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600 }}>{doc.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                          问题数：{doc.issueCount} · 类型：{doc.issueTypes.join('、')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {Array.isArray(result.priorities) && result.priorities.length > 0 && (
+            <div className="card mt-16">
+              <div className="card-title">建议优先处理</div>
+              <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {result.priorities.map((item, index) => (
+                  <div key={`priority-${index}`} style={{ marginBottom: index === result.priorities.length - 1 ? 0 : 8 }}>
+                    {index + 1}. {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="card mt-16">
             <div className="card-title">问题类型统计</div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
@@ -265,6 +342,24 @@ export default function LintPage() {
                             建议：{issue.suggestion}
                           </div>
 
+                          {issue.count != null && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                              命中次数：{issue.count}
+                            </div>
+                          )}
+
+                          {Array.isArray(issue.affectedDocuments) && issue.affectedDocuments.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                              影响条目：{issue.affectedDocuments.slice(0, 6).join('、')}
+                            </div>
+                          )}
+
+                          {Array.isArray(issue.actionItems) && issue.actionItems.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                              可执行动作：{issue.actionItems.slice(0, 2).join(' / ')}
+                            </div>
+                          )}
+
                           {hasDetails && (
                             <div style={{ marginTop: 8 }}>
                               <button
@@ -331,6 +426,15 @@ function SummaryCard({ label, value, color, active, onClick }) {
         {label}
       </div>
     </button>
+  );
+}
+
+function StatTile({ label, value, color }) {
+  return (
+    <div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: color || 'var(--text-primary)' }}>{value}</div>
+    </div>
   );
 }
 

@@ -108,7 +108,41 @@ export interface LintResult {
     severity: 'high' | 'medium' | 'low';
     description: string;
     suggestion: string;
+    count?: number;
+    affectedDocuments?: string[];
+    actionItems?: string[];
+    evidence?: string[];
     details?: string[];
   }[];
   summary: string;
+  priorities?: string[];
+  governance?: {
+    totalDocuments: number;
+    issueCount: number;
+    severityCounts: {
+      high: number;
+      medium: number;
+      low: number;
+    };
+    topIssueTypes: {
+      type: string;
+      severity: 'high' | 'medium' | 'low';
+      count: number;
+      description: string;
+      suggestion: string;
+    }[];
+    topDocuments: {
+      fileName: string;
+      title: string;
+      issueCount: number;
+      issueTypes: string[];
+    }[];
+    recommendedActions: {
+      type: string;
+      severity: 'high' | 'medium' | 'low';
+      count: number;
+      action: string;
+      documents: string[];
+    }[];
+  };
 }
