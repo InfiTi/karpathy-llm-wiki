@@ -398,7 +398,7 @@ ipcMain.handle('ingest:processBatch', async (_event: IpcMainInvokeEvent, filePat
 ipcMain.handle('ingest:processUrl', async (_event: IpcMainInvokeEvent, url: string) => {
   try {
     const config = getConfig();
-    if (!coreModules.IngestPipeline) throw new Error('IngestPipeline 模块未加载');
+    if (!coreModules.IngestPipeline) throw new Error('IngestPipeline module not loaded');
     const pipeline = new coreModules.IngestPipeline(config);
 
     pipeline.on('progress', (progress: { stage: string; progress: number; message: string; thinkingChars?: number; outputChars?: number }) => {
@@ -413,6 +413,39 @@ ipcMain.handle('ingest:processUrl', async (_event: IpcMainInvokeEvent, url: stri
 
     const result = await pipeline.runIngest(url, true);
     return { success: true, ...result };
+  } catch (err: any) { throw new Error(err.message); }
+});
+
+ipcMain.handle('ingest:processUrlBatch', async (_event: IpcMainInvokeEvent, urls: string[], options: any) => {
+  try {
+    const config = getConfig();
+    if (!coreModules.IngestPipeline) throw new Error('IngestPipeline module not loaded');
+    const pipeline = new coreModules.IngestPipeline(config);
+
+    pipeline.on('progress', (progress: {
+      stage: string;
+      progress: number;
+      message: string;
+      thinkingChars?: number;
+      outputChars?: number;
+      batchIndex?: number;
+      batchTotal?: number;
+      url?: string;
+    }) => {
+      mainWindow?.webContents.send('ingest:progress', {
+        stage: progress.stage,
+        progress: progress.progress,
+        message: progress.message,
+        thinkingChars: progress.thinkingChars,
+        outputChars: progress.outputChars,
+        batchIndex: progress.batchIndex,
+        batchTotal: progress.batchTotal,
+        url: progress.url,
+        filePath: progress.url,
+      });
+    });
+
+    return await pipeline.runBatchUrlIngest(urls, options || {});
   } catch (err: any) { throw new Error(err.message); }
 });
 

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ingestProcessFile: (filePath: string) => ipcRenderer.invoke('ingest:processFile', filePath),
   ingestProcessBatch: (filePaths: string[]) => ipcRenderer.invoke('ingest:processBatch', filePaths),
   ingestProcessUrl: (url: string) => ipcRenderer.invoke('ingest:processUrl', url),
+  ingestProcessUrlBatch: (urls: string[], options: any) => ipcRenderer.invoke('ingest:processUrlBatch', urls, options),
   onIngestProgress: (callback: (data: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('ingest:progress', handler);

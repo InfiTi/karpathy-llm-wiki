@@ -10,6 +10,7 @@ import { WikiManager } from '@/core/wiki';
 import { IndexManager } from '@/core/index';
 import { slugify } from '@/core/common/utils';
 import { ProjectConfig, IngestResult } from '@/types';
+import { BatchUrlIngestOptions, BatchUrlIngestResult, BatchUrlIngestItemResult } from './types';
 
 export interface IngestProgress {
   stage: 'fetching' | 'processing' | 'writing' | 'complete';
@@ -17,6 +18,9 @@ export interface IngestProgress {
   message: string;
   thinkingChars?: number;
   outputChars?: number;
+  batchIndex?: number;
+  batchTotal?: number;
+  url?: string;
 }
 
 export class IngestPipeline extends EventEmitter {
@@ -39,6 +43,149 @@ export class IngestPipeline extends EventEmitter {
   async initialize(): Promise<void> {
     await this.wikiManager.initialize();
     await this.indexManager.initialize();
+  }
+
+  async runBatchUrlIngest(urls: string[], options: BatchUrlIngestOptions = {}): Promise<BatchUrlIngestResult> {
+    await this.initialize();
+
+    const minDelaySeconds = Math.max(1, Math.floor(options.minDelaySeconds ?? 30));
+    const maxDelaySeconds = Math.max(minDelaySeconds, Math.floor(options.maxDelaySeconds ?? 90));
+    const retryCount = Math.max(0, Math.floor(options.retryCount ?? 1));
+    const skipExistingSourceUrls = options.skipExistingSourceUrls !== false;
+
+    const results: BatchUrlIngestItemResult[] = [];
+    const seenUrls = new Set<string>();
+    const existingSourceUrls = skipExistingSourceUrls
+      ? await this.loadExistingSourceUrls()
+      : new Set<string>();
+
+    const candidates = urls
+      .map(url => url.trim())
+      .filter(Boolean);
+
+    for (const url of candidates) {
+      const normalizedUrl = this.normalizeSourceUrl(url);
+      if (!normalizedUrl) {
+        results.push({
+          url,
+          normalizedUrl: '',
+          success: false,
+          skipped: true,
+          skipReason: 'invalid_url',
+          error: 'URL 格式无效',
+          attempts: 0,
+        });
+        continue;
+      }
+
+      if (seenUrls.has(normalizedUrl)) {
+        results.push({
+          url,
+          normalizedUrl,
+          success: false,
+          skipped: true,
+          skipReason: 'duplicate_input',
+          error: '同一批次中存在重复 URL',
+          attempts: 0,
+        });
+        continue;
+      }
+
+      seenUrls.add(normalizedUrl);
+
+      if (skipExistingSourceUrls && existingSourceUrls.has(normalizedUrl)) {
+        results.push({
+          url,
+          normalizedUrl,
+          success: false,
+          skipped: true,
+          skipReason: 'duplicate_existing',
+          error: '已存在相同 source_url，已跳过',
+          attempts: 0,
+        });
+        continue;
+      }
+    }
+
+    const queuedUrls = [...seenUrls].filter(url => !(skipExistingSourceUrls && existingSourceUrls.has(url)));
+    let queueIndex = 0;
+
+    for (const normalizedUrl of queuedUrls) {
+      queueIndex += 1;
+      const originalUrl = candidates.find(url => this.normalizeSourceUrl(url) === normalizedUrl) || normalizedUrl;
+
+      this.emit('progress', {
+        stage: 'fetching',
+        progress: Math.round(((queueIndex - 1) / queuedUrls.length) * 100),
+        message: `批量 URL Ingest (${queueIndex}/${queuedUrls.length})`,
+        batchIndex: queueIndex,
+        batchTotal: queuedUrls.length,
+        url: originalUrl,
+      } as IngestProgress);
+
+      let finalResult: BatchUrlIngestItemResult | null = null;
+
+      for (let attempt = 0; attempt <= retryCount; attempt++) {
+        const ingestResult = await this.runIngest(originalUrl, true);
+        if (ingestResult.success) {
+          finalResult = {
+            url: originalUrl,
+            normalizedUrl,
+            success: true,
+            title: ingestResult.title,
+            filePath: ingestResult.filePath,
+            rawPath: ingestResult.rawPath,
+            attempts: attempt + 1,
+          };
+          existingSourceUrls.add(normalizedUrl);
+          break;
+        }
+
+        finalResult = {
+          url: originalUrl,
+          normalizedUrl,
+          success: false,
+          error: ingestResult.error || '未知错误',
+          attempts: attempt + 1,
+        };
+
+        if (attempt < retryCount) {
+          this.emit('progress', {
+            stage: 'fetching',
+            progress: Math.round((queueIndex / queuedUrls.length) * 100),
+            message: `第 ${queueIndex}/${queuedUrls.length} 篇失败，准备重试 (${attempt + 1}/${retryCount})`,
+            batchIndex: queueIndex,
+            batchTotal: queuedUrls.length,
+            url: originalUrl,
+          } as IngestProgress);
+          await this.sleepSeconds(5);
+        }
+      }
+
+      results.push(finalResult!);
+
+      if (queueIndex < queuedUrls.length) {
+        const delaySeconds = this.randomInt(minDelaySeconds, maxDelaySeconds);
+        this.emit('progress', {
+          stage: 'complete',
+          progress: Math.round((queueIndex / queuedUrls.length) * 100),
+          message: `等待 ${delaySeconds} 秒后处理下一篇，降低请求频率`,
+          batchIndex: queueIndex,
+          batchTotal: queuedUrls.length,
+          url: originalUrl,
+        } as IngestProgress);
+        await this.sleepSeconds(delaySeconds);
+      }
+    }
+
+    return {
+      totalRequested: urls.length,
+      totalQueued: queuedUrls.length,
+      successCount: results.filter(item => item.success).length,
+      skippedCount: results.filter(item => item.skipped).length,
+      failedCount: results.filter(item => !item.success && !item.skipped).length,
+      results,
+    };
   }
 
   /** Run ingest process for a file or URL */
@@ -593,5 +740,51 @@ export class IngestPipeline extends EventEmitter {
     const union = new Set([...words1, ...words2]);
 
     return union.size > 0 ? intersection.size / union.size : 0;
+  }
+
+  private async loadExistingSourceUrls(): Promise<Set<string>> {
+    const sourceUrls = new Set<string>();
+    if (!await fs.pathExists(this.rawDir)) {
+      return sourceUrls;
+    }
+
+    const files = await fs.readdir(this.rawDir);
+    const mdFiles = files.filter(file => file.endsWith('.md'));
+
+    for (const file of mdFiles) {
+      try {
+        const content = await fs.readFile(path.join(this.rawDir, file), 'utf-8');
+        const match = content.match(/^source_url:\s*(.+)$/m) || content.match(/^source:\s*(.+)$/m);
+        const url = match ? this.normalizeSourceUrl(match[1].trim()) : '';
+        if (url) {
+          sourceUrls.add(url);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return sourceUrls;
+  }
+
+  private normalizeSourceUrl(url: string): string {
+    const value = (url || '').trim();
+    if (!value) return '';
+
+    try {
+      const parsed = new URL(value);
+      parsed.hash = '';
+      return parsed.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  private randomInt(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  private async sleepSeconds(seconds: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, seconds * 1000));
   }
 }
