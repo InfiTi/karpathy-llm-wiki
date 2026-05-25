@@ -119,10 +119,32 @@ export interface LintResult {
   governance?: {
     totalDocuments: number;
     issueCount: number;
+    issueGroupCount: number;
     severityCounts: {
       high: number;
       medium: number;
       low: number;
+    };
+    scoreBreakdown: {
+      key: string;
+      label: string;
+      points: number;
+      issueGroupCount: number;
+      signalCount: number;
+      summary: string;
+      issueTypes: string[];
+    }[];
+    sourceUrlHighlights: {
+      raw: {
+        sourceUrl: string;
+        count: number;
+        documents: string[];
+      }[];
+      wiki: {
+        sourceUrl: string;
+        count: number;
+        documents: string[];
+      }[];
     };
     topIssueTypes: {
       type: string;

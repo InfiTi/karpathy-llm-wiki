@@ -188,9 +188,63 @@ export default function LintPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
                 <StatTile label="扫描条目" value={governance.totalDocuments} />
                 <StatTile label="问题类型" value={governance.issueCount} />
+                <StatTile label="治理信号" value={governance.issueGroupCount} />
                 <StatTile label="高优先级" value={governance.severityCounts.high} color="var(--accent-red)" />
                 <StatTile label="中优先级" value={governance.severityCounts.medium} color="var(--accent-yellow)" />
               </div>
+
+              {governance.scoreBreakdown?.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>评分拆解</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {governance.scoreBreakdown.map(item => (
+                      <div key={item.key} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{item.label}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              扣分：-{item.points} / 问题组：{item.issueGroupCount} / 信号数：{item.signalCount}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              {item.summary}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(governance.sourceUrlHighlights?.raw?.length > 0 || governance.sourceUrlHighlights?.wiki?.length > 0) && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Source URL 重复重点</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {governance.sourceUrlHighlights?.raw?.map(item => (
+                      <div key={`raw-${item.sourceUrl}`} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600 }}>Raw 重复：{item.count}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, wordBreak: 'break-all' }}>
+                          {item.sourceUrl}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                          {item.documents.slice(0, 5).join(' / ')}
+                        </div>
+                      </div>
+                    ))}
+                    {governance.sourceUrlHighlights?.wiki?.map(item => (
+                      <div key={`wiki-${item.sourceUrl}`} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ fontWeight: 600 }}>Wiki 同源重复：{item.count}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, wordBreak: 'break-all' }}>
+                          {item.sourceUrl}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                          {item.documents.slice(0, 5).join(' / ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {governance.topIssueTypes.length > 0 && (
                 <div style={{ marginTop: 16 }}>

@@ -37,10 +37,27 @@ type GovernanceIssue = {
   details: string[];
 };
 
+type GovernanceBucketKey =
+  | 'duplicate_ingest'
+  | 'duplicate_content'
+  | 'routing'
+  | 'structure'
+  | 'coverage';
+
 type RawSourceEntry = {
   rawFileName: string;
   rawFilePath: string;
   sourceUrl: string;
+};
+
+type ScoreBucket = {
+  key: GovernanceBucketKey;
+  label: string;
+  points: number;
+  issueGroupCount: number;
+  signalCount: number;
+  summary: string;
+  issueTypes: string[];
 };
 
 export class LintChecker {
@@ -66,15 +83,16 @@ export class LintChecker {
       const { issues, governanceActions } = await this.runRuleChecks(filteredDocs);
       const score = this.calculateScore(issues);
       const summary = this.buildSummary(filteredDocs, issues);
+      const priorities = this.buildPriorities(issues);
       const governance = this.buildGovernance(filteredDocs, issues, governanceActions);
 
-      await this.generateReport(score, issues, summary);
+      await this.generateReport(score, issues, summary, priorities, governance);
 
       return {
         score,
         issues,
         summary,
-        priorities: this.buildPriorities(issues),
+        priorities,
         governance,
       };
     } catch (error) {
@@ -92,7 +110,10 @@ export class LintChecker {
         governance: {
           totalDocuments: 0,
           issueCount: 1,
+          issueGroupCount: 1,
           severityCounts: { high: 1, medium: 0, low: 0 },
+          scoreBreakdown: [],
+          sourceUrlHighlights: { raw: [], wiki: [] },
           topIssueTypes: [],
           topDocuments: [],
           recommendedActions: [],
@@ -661,15 +682,97 @@ export class LintChecker {
   }
 
   private calculateScore(issues: LintResult['issues']): number {
+    const buckets = this.buildScoreBreakdown(issues);
     let score = 100;
 
-    for (const issue of issues) {
-      if (issue.severity === 'high') score -= 12;
-      else if (issue.severity === 'medium') score -= 6;
-      else score -= 2;
+    for (const bucket of buckets) {
+      score -= bucket.points;
     }
 
     return Math.max(0, score);
+  }
+
+  private buildScoreBreakdown(issues: LintResult['issues']): ScoreBucket[] {
+    const bucketDefs: {
+      key: GovernanceBucketKey;
+      label: string;
+      issueTypes: string[];
+      pointCap: number;
+      pointsPerIssue: number;
+      pointsPerSignal: number;
+    }[] = [
+      {
+        key: 'duplicate_ingest',
+        label: '重复 ingest / 同源重复编译',
+        issueTypes: ['duplicate_source_url_raw_group', 'duplicate_source_url_wiki_group', 'duplicate_title_group'],
+        pointCap: 40,
+        pointsPerIssue: 6,
+        pointsPerSignal: 0.6,
+      },
+      {
+        key: 'duplicate_content',
+        label: '正文重复 / 标题高相似',
+        issueTypes: ['duplicate_content_group', 'similar_title_cluster'],
+        pointCap: 20,
+        pointsPerIssue: 5,
+        pointsPerSignal: 0.4,
+      },
+      {
+        key: 'routing',
+        label: '路由与实体命中风险',
+        issueTypes: ['routing_conflict_group', 'unresolvable_entity_group'],
+        pointCap: 20,
+        pointsPerIssue: 5,
+        pointsPerSignal: 0.4,
+      },
+      {
+        key: 'structure',
+        label: '坏链与孤立结构',
+        issueTypes: ['broken_link_group', 'orphan_note_group'],
+        pointCap: 15,
+        pointsPerIssue: 2,
+        pointsPerSignal: 0.1,
+      },
+      {
+        key: 'coverage',
+        label: '占位文档 / 轻度结构提示',
+        issueTypes: ['empty_document'],
+        pointCap: 5,
+        pointsPerIssue: 1,
+        pointsPerSignal: 0.1,
+      },
+    ];
+
+    const buckets = bucketDefs.map(def => {
+      const bucketIssues = issues.filter(issue => def.issueTypes.includes(issue.type));
+      if (bucketIssues.length === 0) {
+        return {
+          key: def.key,
+          label: def.label,
+          points: 0,
+          issueGroupCount: 0,
+          signalCount: 0,
+          summary: '当前未发现此类问题',
+          issueTypes: def.issueTypes,
+        };
+      }
+
+      const signalCount = bucketIssues.reduce((sum, issue) => sum + (issue.count || issue.details?.length || 1), 0);
+      const rawPoints = bucketIssues.length * def.pointsPerIssue + signalCount * def.pointsPerSignal;
+      const points = Math.min(def.pointCap, Math.round(rawPoints));
+
+      return {
+        key: def.key,
+        label: def.label,
+        points,
+        issueGroupCount: bucketIssues.length,
+        signalCount,
+        summary: `${bucketIssues.length} 组问题，累计 ${signalCount} 个治理信号`,
+        issueTypes: def.issueTypes,
+      };
+    });
+
+    return buckets.filter(bucket => bucket.issueGroupCount > 0 || bucket.points > 0);
   }
 
   private buildSummary(docs: WikiDocumentInfo[], issues: LintResult['issues']): string {
@@ -738,6 +841,7 @@ export class LintChecker {
     issues: LintResult['issues'],
     governanceActions: GovernanceAction[]
   ): NonNullable<LintResult['governance']> {
+    const scoreBreakdown = this.buildScoreBreakdown(issues);
     const severityCounts = {
       high: issues.filter(issue => issue.severity === 'high').length,
       medium: issues.filter(issue => issue.severity === 'medium').length,
@@ -807,17 +911,51 @@ export class LintChecker {
       })
       .slice(0, 6);
 
+    const sourceUrlHighlights = this.buildSourceUrlHighlights(issues);
+
     return {
       totalDocuments: docs.length,
       issueCount: issues.length,
+      issueGroupCount: issues.reduce((sum, issue) => sum + (issue.count || issue.details?.length || 1), 0),
       severityCounts,
+      scoreBreakdown,
+      sourceUrlHighlights,
       topIssueTypes,
       topDocuments,
       recommendedActions,
     };
   }
 
-  private async generateReport(score: number, issues: LintResult['issues'], summary: string): Promise<string> {
+  private buildSourceUrlHighlights(issues: LintResult['issues']): NonNullable<LintResult['governance']>['sourceUrlHighlights'] {
+    const buildList = (type: string) => issues
+      .filter(issue => issue.type === type)
+      .map(issue => ({
+        sourceUrl: this.extractSourceUrlFromDescription(issue.description),
+        count: issue.count || 0,
+        documents: issue.affectedDocuments || [],
+      }))
+      .filter(item => item.sourceUrl)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      raw: buildList('duplicate_source_url_raw_group'),
+      wiki: buildList('duplicate_source_url_wiki_group'),
+    };
+  }
+
+  private extractSourceUrlFromDescription(description: string): string {
+    const match = (description || '').match(/https?:\/\/\S+/i);
+    return match ? match[0].replace(/[）)\].,，。]+$/u, '') : '';
+  }
+
+  private async generateReport(
+    score: number,
+    issues: LintResult['issues'],
+    summary: string,
+    priorities: string[],
+    governance: NonNullable<LintResult['governance']>
+  ): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `lint-report-${timestamp}.md`;
     const filePath = path.join(this.outputsDir, fileName);
@@ -837,6 +975,32 @@ export class LintChecker {
       '',
       '## 总结',
       summary,
+      '',
+      '## 治理面板',
+      `- 扫描条目：${governance.totalDocuments}`,
+      `- 问题类型数：${governance.issueCount}`,
+      `- 治理信号总量：${governance.issueGroupCount}`,
+      `- 高优先级：${governance.severityCounts.high}`,
+      `- 中优先级：${governance.severityCounts.medium}`,
+      `- 低优先级：${governance.severityCounts.low}`,
+      '',
+      '### 评分拆解',
+      ...(
+        governance.scoreBreakdown.length > 0
+          ? governance.scoreBreakdown.map(item => `- ${item.label}：-${item.points} 分（${item.summary}）`)
+          : ['- 当前没有可计分的问题']
+      ),
+      '',
+      '### Source URL 重复重点',
+      ...(governance.sourceUrlHighlights.raw.length > 0
+        ? ['- Raw 层：', ...governance.sourceUrlHighlights.raw.map(item => `  - ${item.sourceUrl} (${item.count})`)]
+        : ['- Raw 层：当前未发现同源重复 raw']),
+      ...(governance.sourceUrlHighlights.wiki.length > 0
+        ? ['- Wiki 层：', ...governance.sourceUrlHighlights.wiki.map(item => `  - ${item.sourceUrl} (${item.count})`)]
+        : ['- Wiki 层：当前未发现同源重复 wiki']),
+      '',
+      '### 建议优先顺序',
+      ...(priorities.length > 0 ? priorities.map((item, index) => `${index + 1}. ${item}`) : ['1. 当前没有明显治理优先项']),
       '',
       '## 问题列表',
       '',
