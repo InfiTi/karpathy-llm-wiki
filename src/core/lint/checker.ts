@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs-extra';
+import matter from 'gray-matter';
 import { WikiManager } from '@/core/wiki';
 import { WikiDocumentInfo } from '@/core/wiki/types';
 import { ProjectConfig, LintResult } from '@/types';
@@ -36,13 +37,21 @@ type GovernanceIssue = {
   details: string[];
 };
 
+type RawSourceEntry = {
+  rawFileName: string;
+  rawFilePath: string;
+  sourceUrl: string;
+};
+
 export class LintChecker {
   private wikiManager: WikiManager;
   private outputsDir: string;
+  private rawDir: string;
 
   constructor(config: ProjectConfig) {
     this.wikiManager = new WikiManager(config.projectRoot);
     this.outputsDir = path.join(config.projectRoot, 'outputs');
+    this.rawDir = path.join(config.projectRoot, 'raw');
   }
 
   async initialize(): Promise<void> {
@@ -54,7 +63,7 @@ export class LintChecker {
     try {
       const docs = await this.wikiManager.listDocuments();
       const filteredDocs = docs.filter(doc => !this.isIndexDocument(doc));
-      const { issues, governanceActions } = this.runRuleChecks(filteredDocs);
+      const { issues, governanceActions } = await this.runRuleChecks(filteredDocs);
       const score = this.calculateScore(issues);
       const summary = this.buildSummary(filteredDocs, issues);
       const governance = this.buildGovernance(filteredDocs, issues, governanceActions);
@@ -92,7 +101,7 @@ export class LintChecker {
     }
   }
 
-  private runRuleChecks(docs: WikiDocumentInfo[]): { issues: LintResult['issues']; governanceActions: GovernanceAction[] } {
+  private async runRuleChecks(docs: WikiDocumentInfo[]): Promise<{ issues: LintResult['issues']; governanceActions: GovernanceAction[] }> {
     const duplicateGroups = this.findDuplicateTitleGroups(docs);
     const governanceActions: GovernanceAction[] = [];
 
@@ -100,7 +109,7 @@ export class LintChecker {
     const emptyIssues = this.checkEmptyDocuments(docs);
     const duplicateIssues = this.buildDuplicateTitleIssues(duplicateGroups);
     const similarIssues = this.checkSimilarTitles(docs, duplicateGroups);
-    const duplicateSourceIssues = this.checkDuplicateRawSources(docs);
+    const duplicateSourceIssues = await this.checkDuplicateSourceUrlGroups(docs);
     const duplicateContentIssues = this.checkDuplicateContent(docs);
     const orphanIssues = this.checkOrphanNotes(docs);
     const routeIssues = this.checkRouteIntegrity(docs);
@@ -343,34 +352,124 @@ export class LintChecker {
     }];
   }
 
-  private checkDuplicateRawSources(docs: WikiDocumentInfo[]): LintResult['issues'] {
-    const groups = new Map<string, WikiDocumentInfo[]>();
+  private async checkDuplicateSourceUrlGroups(docs: WikiDocumentInfo[]): Promise<LintResult['issues']> {
+    const rawSources = await this.loadRawSourceEntries();
+    if (rawSources.length === 0) {
+      return [];
+    }
 
-    for (const doc of docs) {
-      const rawFile = this.normalizeRawFile(doc.rawFile);
-      if (!rawFile) continue;
+    return [
+      ...this.buildDuplicateRawSourceUrlIssues(rawSources),
+      ...this.buildDuplicateWikiSourceUrlIssues(docs, rawSources),
+    ];
+  }
 
-      if (!groups.has(rawFile)) {
-        groups.set(rawFile, []);
+  private async loadRawSourceEntries(): Promise<RawSourceEntry[]> {
+    if (!await fs.pathExists(this.rawDir)) {
+      return [];
+    }
+
+    const files = await fs.readdir(this.rawDir);
+    const mdFiles = files.filter(file => file.endsWith('.md'));
+    const rawSources: RawSourceEntry[] = [];
+
+    for (const file of mdFiles) {
+      const rawFilePath = path.join(this.rawDir, file);
+
+      try {
+        const content = await fs.readFile(rawFilePath, 'utf-8');
+        const parsed = matter(content);
+        const sourceUrl = this.normalizeSourceUrl(parsed.data?.source_url || parsed.data?.source || '');
+
+        if (!sourceUrl) continue;
+
+        rawSources.push({
+          rawFileName: file,
+          rawFilePath,
+          sourceUrl,
+        });
+      } catch {
+        continue;
       }
-      groups.get(rawFile)!.push(doc);
+    }
+
+    return rawSources;
+  }
+
+  private buildDuplicateRawSourceUrlIssues(rawSources: RawSourceEntry[]): LintResult['issues'] {
+    const groups = new Map<string, RawSourceEntry[]>();
+
+    for (const rawSource of rawSources) {
+      if (!groups.has(rawSource.sourceUrl)) {
+        groups.set(rawSource.sourceUrl, []);
+      }
+      groups.get(rawSource.sourceUrl)!.push(rawSource);
     }
 
     return [...groups.entries()]
       .filter(([, items]) => items.length > 1)
-      .map(([rawFile, items]) => ({
-        type: 'duplicate_raw_source_group',
+      .map(([sourceUrl, items]) => ({
+        type: 'duplicate_source_url_raw_group',
         severity: 'high' as const,
-        description: `发现 ${items.length} 个条目指向同一个 raw source：${rawFile}`,
-        suggestion: '优先确认这些条目是否是同一次源材料被重复 ingest，再决定保留主条目还是合并内容',
+        description: `发现 ${items.length} 个 raw 文件指向同一个 source_url：${sourceUrl}`,
+        suggestion: '优先在 ingest 入口拦截同源文章重复抓取，并为已落库的重复 raw 建立清理流程',
         count: items.length,
-        affectedDocuments: items.map(doc => this.getDocDisplayTitle(doc)),
+        affectedDocuments: items.map(item => item.rawFileName),
         actionItems: [
-          '回溯同一 raw source 的 ingest 过程，确认是否重复生成',
-          '保留唯一主条目，其余条目合并、删除或改为别名',
+          '保留同一来源文章的一份有效 raw，其余 raw 视情况删除、归档或标记为重复',
+          '在 ingest 侧使用 source_url/source 作为重复抓取的首要排查锚点',
         ],
-        evidence: items.map(doc => `${doc.fileName} -> ${rawFile}`),
-        details: items.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName} -> ${rawFile}`),
+        evidence: items.map(item => `${item.rawFileName} -> ${sourceUrl}`),
+        details: items.map(item => `${item.rawFileName} -> ${item.rawFilePath}`),
+      }));
+  }
+
+  private buildDuplicateWikiSourceUrlIssues(
+    docs: WikiDocumentInfo[],
+    rawSources: RawSourceEntry[]
+  ): LintResult['issues'] {
+    const rawSourceMap = new Map<string, RawSourceEntry>();
+    for (const rawSource of rawSources) {
+      rawSourceMap.set(rawSource.rawFileName.toLowerCase(), rawSource);
+    }
+
+    const groups = new Map<string, { sourceUrl: string; docs: WikiDocumentInfo[] }>();
+
+    for (const doc of docs) {
+      const rawFileName = this.extractRawFileName(doc.rawFile);
+      if (!rawFileName) continue;
+
+      const rawSource = this.findRawSourceEntry(rawFileName, rawSourceMap);
+      if (!rawSource) continue;
+
+      if (!groups.has(rawSource.sourceUrl)) {
+        groups.set(rawSource.sourceUrl, {
+          sourceUrl: rawSource.sourceUrl,
+          docs: [],
+        });
+      }
+
+      groups.get(rawSource.sourceUrl)!.docs.push(doc);
+    }
+
+    return [...groups.values()]
+      .filter(group => group.docs.length > 1)
+      .map(group => ({
+        type: 'duplicate_source_url_wiki_group',
+        severity: 'high' as const,
+        description: `发现 ${group.docs.length} 个 wiki 条目回溯到同一个 source_url：${group.sourceUrl}`,
+        suggestion: '优先确认这些 wiki 条目是否应合并为同一知识实体，避免同源文章在 wiki 层重复编译',
+        count: group.docs.length,
+        affectedDocuments: group.docs.map(doc => this.getDocDisplayTitle(doc)),
+        actionItems: [
+          '为同一 source_url 只保留一个主条目，其余条目合并、删除或降级为别名/重定向',
+          '回溯该来源文章的编译规则，避免同源 raw 在 wiki 层继续派生重复内容',
+        ],
+        evidence: group.docs.map(doc => `${this.getDocDisplayTitle(doc)} -> ${doc.fileName}`),
+        details: group.docs.map(doc => {
+          const rawFileName = this.extractRawFileName(doc.rawFile) || 'missing raw_file';
+          return `${this.getDocDisplayTitle(doc)} -> ${doc.fileName} -> ${rawFileName}`;
+        }),
       }));
   }
 
@@ -510,11 +609,44 @@ export class LintChecker {
     return [...new Set(pairs.flatMap(pair => [this.getDocDisplayTitle(pair.a), this.getDocDisplayTitle(pair.b)]))].slice(0, 20);
   }
 
-  private normalizeRawFile(rawFile: string): string {
-    return this.cleanDisplayText(rawFile || '')
+  private extractRawFileName(rawFile: string): string {
+    const value = (rawFile || '').trim();
+    if (!value) return '';
+
+    const wikiLinkMatch = value.match(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/);
+    const target = wikiLinkMatch ? wikiLinkMatch[1] : value;
+
+    return target
       .replace(/^\.\.\/raw\//i, '')
       .replace(/^raw\//i, '')
       .trim();
+  }
+
+  private findRawSourceEntry(
+    rawFileName: string,
+    rawSourceMap: Map<string, RawSourceEntry>
+  ): RawSourceEntry | null {
+    const normalized = rawFileName.toLowerCase();
+
+    if (rawSourceMap.has(normalized)) {
+      return rawSourceMap.get(normalized)!;
+    }
+
+    const withExtension = normalized.endsWith('.md') ? normalized : `${normalized}.md`;
+    return rawSourceMap.get(withExtension) || null;
+  }
+
+  private normalizeSourceUrl(sourceUrl: string): string {
+    const cleaned = this.cleanDisplayText(sourceUrl || '').trim();
+    if (!cleaned) return '';
+
+    try {
+      const normalized = new URL(cleaned);
+      normalized.hash = '';
+      return normalized.toString();
+    } catch {
+      return cleaned;
+    }
   }
 
   private normalizeContentForComparison(content: string): string {
@@ -552,7 +684,9 @@ export class LintChecker {
     const priorities: string[] = [];
 
     const duplicateIssue = issues.find(issue => issue.type === 'duplicate_title_group');
-    const duplicateSourceIssue = issues.find(issue => issue.type === 'duplicate_raw_source_group');
+    const duplicateSourceIssue = issues.find(issue =>
+      issue.type === 'duplicate_source_url_raw_group' || issue.type === 'duplicate_source_url_wiki_group'
+    );
     const duplicateContentIssue = issues.find(issue => issue.type === 'duplicate_content_group');
     const routeConflictIssue = issues.find(issue => issue.type === 'routing_conflict_group');
     const similarIssue = issues.find(issue => issue.type === 'similar_title_cluster' && issue.severity === 'high');
