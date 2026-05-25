@@ -5,7 +5,7 @@
 **源码位置**: `E:\AI\Karpathy`
 **状态**: #in-progress
 **创建日期**: 2026-04-16
-**最后更新**: 2026-04-16
+**最后更新**: 2026-05-26
 
 ## 核心目标
 
@@ -52,3 +52,4 @@ outputs/ ← AI 生成的回答（可回填 wiki/）
   - [2026-04-16 初始化](logs/2026-04-16-init.md)
   - [2026-04-16 清理知识图谱](logs/2026-04-16-cleanup.md)
   - [2026-04-16 v0.3.0 规划](logs/2026-04-16-v030-plan.md)
+  - [2026-05-26 Batch URL Ingest Validation Log](logs/2026-05-26-batch-url-ingest-validation.md)

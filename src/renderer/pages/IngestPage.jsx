@@ -18,6 +18,7 @@ export default function IngestPage() {
   const [maxDelaySeconds, setMaxDelaySeconds] = useState(90);
   const [retryCount, setRetryCount] = useState(1);
   const [skipExistingSourceUrls, setSkipExistingSourceUrls] = useState(true);
+  const [batchSummary, setBatchSummary] = useState(null);
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -86,6 +87,7 @@ export default function IngestPage() {
     setRunning(true);
     abortRef.current = false;
     setResults([]);
+    setBatchSummary(null);
     addLog('info', `Start URL ingest: ${url}`);
 
     try {
@@ -118,6 +120,22 @@ export default function IngestPage() {
     setUrl('');
   };
 
+  const buildBatchItemMessage = (item) => {
+    if (item.success) {
+      return `Succeeded after ${item.attempts || 1} attempt(s)`;
+    }
+    if (item.skipReason === 'duplicate_existing') {
+      return 'Skipped: source_url already exists';
+    }
+    if (item.skipReason === 'duplicate_input') {
+      return 'Skipped: duplicate URL in current batch';
+    }
+    if (item.skipReason === 'invalid_url') {
+      return 'Skipped: invalid URL';
+    }
+    return item.error || 'Failed';
+  };
+
   const ingestUrlBatch = async () => {
     const urls = urlBatchText
       .split(/\r?\n/)
@@ -132,7 +150,8 @@ export default function IngestPage() {
     setProgress(0);
     setThinkingChars(0);
     setOutputChars(0);
-    addLog('info', `Start batch URL ingest: ${urls.length} URLs`);
+    setBatchSummary(null);
+    addLog('info', `Start batch URL ingest: ${urls.length} line(s)`);
 
     try {
       const batchResult = await window.electronAPI.ingestProcessUrlBatch(urls, {
@@ -141,22 +160,40 @@ export default function IngestPage() {
         retryCount,
         skipExistingSourceUrls,
       });
+      const resultItems = batchResult.results || [];
+      const duplicateInputCount = resultItems.filter((item) => item.skipReason === 'duplicate_input').length;
+      const duplicateExistingCount = resultItems.filter((item) => item.skipReason === 'duplicate_existing').length;
+      const invalidUrlCount = resultItems.filter((item) => item.skipReason === 'invalid_url').length;
+      const uniqueInputCount = new Set(
+        resultItems
+          .map((item) => item.normalizedUrl)
+          .filter(Boolean)
+      ).size;
 
-      const formattedResults = (batchResult.results || []).map((item) => ({
+      setBatchSummary({
+        totalRequested: batchResult.totalRequested,
+        uniqueInputCount,
+        totalQueued: batchResult.totalQueued,
+        duplicateInputCount,
+        duplicateExistingCount,
+        invalidUrlCount,
+      });
+
+      const formattedResults = resultItems.map((item) => ({
         name: item.title || item.url,
         status: item.success ? 'success' : item.skipped ? 'skipped' : 'error',
-        message: item.success
-          ? `Succeeded after ${item.attempts || 1} attempt(s)`
-          : item.error || item.skipReason || 'Failed',
+        message: buildBatchItemMessage(item),
         path: item.filePath,
         rawPath: item.rawPath,
         wikiPath: item.filePath,
+        skipReason: item.skipReason,
+        normalizedUrl: item.normalizedUrl,
       }));
 
       setResults(formattedResults);
       addLog(
         batchResult.failedCount === 0 ? 'success' : 'warning',
-        `Batch URL ingest finished: success ${batchResult.successCount}, skipped ${batchResult.skippedCount}, failed ${batchResult.failedCount}`
+        `Batch URL ingest finished: requested ${batchResult.totalRequested}, unique ${uniqueInputCount}, queued ${batchResult.totalQueued}, success ${batchResult.successCount}, skipped ${batchResult.skippedCount}, failed ${batchResult.failedCount}`
       );
 
       if (batchResult.failedCount === 0) {
@@ -187,6 +224,7 @@ export default function IngestPage() {
     setRunning(true);
     abortRef.current = false;
     setResults([]);
+    setBatchSummary(null);
     addLog('info', `Start file ingest: ${files.length} file(s)`);
 
     const filePaths = files.map((f) => f.path);
@@ -442,9 +480,16 @@ export default function IngestPage() {
       {results.length > 0 && (
         <div className="card mt-16">
           <div className="card-title">Results</div>
-          <div style={{ fontSize: 12, color: 'var(--accent-green)', marginBottom: 12 }}>
-            Success {successCount} ¡¤ Skipped {skippedCount} ¡¤ Failed {failedCount}
+          <div style={{ fontSize: 12, color: 'var(--accent-green)', marginBottom: 8 }}>
+            Success {successCount} | Skipped {skippedCount} | Failed {failedCount}
           </div>
+          {batchSummary && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Requested {batchSummary.totalRequested} | Unique URLs {batchSummary.uniqueInputCount} | Queued {batchSummary.totalQueued}
+              <br />
+              Skip detail: existing {batchSummary.duplicateExistingCount} | duplicate input {batchSummary.duplicateInputCount} | invalid {batchSummary.invalidUrlCount}
+            </div>
+          )}
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             {results.map((r, i) => (
               <div key={i} style={{ padding: '10px 0', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
